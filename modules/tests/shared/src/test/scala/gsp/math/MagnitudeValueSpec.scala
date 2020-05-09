@@ -14,6 +14,7 @@ final class MagnitudeValueSpec extends CatsSuite {
 
   // Laws
   checkAll("MagnitudeValue", OrderTests[MagnitudeValue].order)
+  checkAll("MagnitudeValueMonoid", MonoidTests[MagnitudeValue].monoid)
 
   test("Equality must be natural") {
     forAll { (a: MagnitudeValue, b: MagnitudeValue) =>

@@ -3,7 +3,7 @@
 
 package gsp.math
 
-import cats.{ Order, Show }
+import cats.{ Order, Monoid, Show }
 import cats.instances.int._
 
 /**
@@ -17,6 +17,12 @@ final case class MagnitudeValue(private[gsp] val scaledValue: Int) extends Produ
 }
 
 object MagnitudeValue {
+  /**
+   * Construct a new MagnitudeValue from a double value. Approximate.
+   * @group Constructors
+   */
+  def fromDoubleDegrees(m: Double): MagnitudeValue =
+    MagnitudeValue((m * 100).toInt)
 
   final lazy val ZeroMagnitude = MagnitudeValue(0)
 
@@ -27,5 +33,9 @@ object MagnitudeValue {
   /** @group Typeclass Instances */
   implicit val MagnitudeValueOrder: Order[MagnitudeValue] =
     Order.by(_.scaledValue)
+
+  /** @group Typeclass Instances */
+  implicit val MagnitudeMonoid: Monoid[MagnitudeValue] =
+    Monoid.instance(ZeroMagnitude, (a, b) => MagnitudeValue(a.scaledValue + b.scaledValue))
 
 }
