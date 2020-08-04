@@ -51,3 +51,6 @@ out/
 
 # Scalafmt
 .scalafmt.conf
+
+# Hydra
+.hydra/

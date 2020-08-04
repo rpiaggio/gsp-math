@@ -10,11 +10,11 @@ lazy val scalaJavaTimeVersion        = "2.0.0"
 lazy val geminiLocalesVersion        = "0.5.0"
 lazy val jtsVersion                  = "0.0.9"
 lazy val svgdotjsVersion             = "0.0.1"
-lazy val newType                     = "0.4.4"
 lazy val coulombVersion              = "0.5.0"
 lazy val spireVersion                = "0.17.0-RC1"
 lazy val singletonOpsVersion         = "0.5.1"
 lazy val refinedVersion              = "0.9.15"
+lazy val catsTimeVersion             = "0.3.1-SNAPSHOT"
 
 inThisBuild(
   Seq(
@@ -45,7 +45,8 @@ lazy val math = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel"              %%% "spire"                   % spireVersion,
       "eu.timepit"                 %%% "singleton-ops"           % singletonOpsVersion,
       "eu.timepit"                 %%% "refined"                 % refinedVersion,
-      "eu.timepit"                 %%% "refined-cats"            % refinedVersion
+      "eu.timepit"                 %%% "refined-cats"            % refinedVersion,
+      "io.chrisdavenport"          %%% "cats-time"               % catsTimeVersion
     )
   )
   .jvmConfigure(_.enablePlugins(AutomateHeaderPlugin))

@@ -8,8 +8,6 @@ import weaver._
 import weaver.scalacheck._
 
 import edu.gemini.skycalc.ImprovedSkyCalcTest
-import cats.Show
-import java.time.Instant
 import gsp.math.Coordinates
 import gsp.math.arb.ArbCoordinates._
 import gsp.math.arb.ArbPlace._
@@ -19,11 +17,9 @@ import java.time._
 import gsp.math.Place
 import jsky.coords.WorldCoords
 import java.{ util => ju }
+import io.chrisdavenport.cats.time._
 
 object ImprovedSkyCalcSpecJVM extends SimpleIOSuite with IOCheckers {
-
-  implicit val showInstant: Show[Instant]   = Show.fromToString
-  implicit val showZDT: Show[ZonedDateTime] = Show.fromToString
 
   private val zdtFrom  = ZonedDateTime.of(
     LocalDate.of(1901, 1, 1),

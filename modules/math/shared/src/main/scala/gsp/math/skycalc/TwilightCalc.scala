@@ -3,6 +3,8 @@
 
 package gsp.math.skycalc
 
+import Constants._
+
 import cats.implicits._
 import gsp.math.JulianDate
 import gsp.math.Place
@@ -44,8 +46,8 @@ trait TwilightCalc extends SunCalc {
       case TwilightBoundType.Official =>
         // Horizon geometric correction from p. 24 of the Skycalc manual: sqrt(2 * elevation / Re) (radians)
         boundType.horizonAngle + Math.sqrt(
-          2.0 * place.altitude / TwilightCalc.EQUAT_RAD
-        ) * TwilightCalc.DEG_IN_RADIAN
+          2.0 * place.altitude / EquatorialRadiusMeters
+        ) * DegsInRadian
       case _                          => boundType.horizonAngle
     }
 

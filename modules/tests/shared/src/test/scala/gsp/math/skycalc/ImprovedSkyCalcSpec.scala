@@ -7,7 +7,6 @@ import weaver._
 
 import cats.implicits._
 import cats.Monoid
-import cats.Show
 import java.time._
 import gsp.math.Coordinates
 import gsp.math.Place
@@ -16,9 +15,6 @@ import gsp.math.Place
 // Property based testing is in ImprovedSkyCalcSpecJVM, where output
 // is compared to the one from {edu.gemini.skycalc} in Java.
 object ImprovedSkyCalcSpec extends SimpleIOSuite {
-
-  implicit val showInstant: Show[Instant]   = Show.fromToString
-  implicit val showZDT: Show[ZonedDateTime] = Show.fromToString
 
   private val NanosPerMillis: Int = 1_000_000
 
