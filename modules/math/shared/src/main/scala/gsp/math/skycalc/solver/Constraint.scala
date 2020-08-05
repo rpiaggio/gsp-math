@@ -6,14 +6,9 @@ package gsp.math.skycalc.solver
 import java.time.Duration
 import java.time.Instant
 
-// import edu.gemini.util.skycalc.calc._
-// import edu.gemini.util.skycalc.calc.Interval
 // import edu.gemini.util.skycalc.Night
-// import edu.gemini.skycalc.TimeUtils
 
 trait Constraint[A] {
-
-  // protected val DefaultTolerance: Long = Duration.ofSeconds(30).toMillis
 
   protected val solver: Solver[A] // use Scala solver from util package instead of Java one
 

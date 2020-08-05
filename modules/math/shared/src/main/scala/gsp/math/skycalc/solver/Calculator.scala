@@ -28,7 +28,6 @@ trait Calculator {
   def isDefinedAt(i:     Instant): Boolean                                  =
     i >= start && i <= end
   def value(ix:          Int): SkyCalcResults = values(ix)
-  // def valueAt(t:         Long) = values(toIndex(t))
   def valueAt(field:     SkyCalcResults => Double, i: Instant): Double =
     field(values(toIndex(i)))
   def timedValues(field: SkyCalcResults => Double): List[(Instant, Double)] =
@@ -82,7 +81,7 @@ trait FixedRateCalculator extends Calculator {
     require(i <= end)
     val ix =
       math
-        .floor(Interval(start, i).duration.toMillis / preciseRate)
+        .floor((i.toEpochMilli - start.toEpochMilli) / preciseRate)
         .toInt // always round down; the sample at this index gives a value <= t
     require(times(ix) <= i)
     require(ix == samples - 1 || times(ix + 1) > i)

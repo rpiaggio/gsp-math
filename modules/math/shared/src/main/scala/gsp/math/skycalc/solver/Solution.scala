@@ -10,6 +10,7 @@ import cats.Show
 import java.time.Instant
 import java.time.Duration
 import io.chrisdavenport.cats.time._
+import monocle.Getter
 
 /**
   * Representation of a solution for a constraint defined by an arbitrary number of intervals.
@@ -138,7 +139,7 @@ case class Solution(intervals: List[Interval]) {
 /**
   * Companion objects with convenience constructors.
   */
-object Solution {
+object Solution extends SolutionOptics {
 
   /** Solution that is always true (i.e. for any time t). */
   val Always = new Solution(List(Interval(Instant.MIN, Instant.MAX)))
@@ -164,4 +165,11 @@ object Solution {
 
     def combine(x: Solution, y: Solution): Solution = x.combine(y)
   }
+}
+
+trait SolutionOptics { self: Solution.type =>
+
+  /** @group Optics */
+  val intervals: Getter[Solution, List[Interval]] =
+    Getter(_.intervals)
 }

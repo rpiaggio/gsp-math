@@ -7,10 +7,6 @@ import gsp.math.Coordinates
 import gsp.math.Place
 import gsp.math.skycalc.ImprovedSkyCalc
 
-// import edu.gemini.spModel.core.{ Coordinates, Site }
-// import edu.gemini.skycalc.{ ImprovedSkyCalc, TimeUtils }
-// import java.util.Date
-
 import java.time.Duration
 import java.time.Instant
 import gsp.math.skycalc.SkyCalcResults
@@ -26,8 +22,6 @@ import gsp.math.skycalc.SkyCalcResults
   * accessing them, otherwise an out of bounds exception will be thrown.
   */
 trait TargetCalculator extends Calculator {
-  // require(site == Site.GN || site == Site.GS)
-
   val place: Place
   val targetLocation: Instant => Coordinates
 
