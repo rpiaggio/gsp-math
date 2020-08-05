@@ -76,7 +76,7 @@ object Interval {
     else if (left.head.abuts(right.head) || left.head.overlaps(right.head)) {
       val start = Math.min(left.head.start, right.head.start)
       val end   = Math.max(left.head.end, right.head.end)
-      combine(new Interval(start, end) +: left.tail, right.tail)
+      combine(combine(Seq(new Interval(start, end)), left.tail), right.tail)
     } else if (left.head.start < right.head.start)
       left.head +: combine(left.tail, right)
     else
