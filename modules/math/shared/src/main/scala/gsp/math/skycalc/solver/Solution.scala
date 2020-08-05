@@ -3,23 +3,28 @@
 
 package gsp.math.skycalc.solver
 
-// import java.util.TimeZone
-// import edu.gemini.skycalc.TimeUtils
+import cats.implicits._
+import cats.Eq
+import cats.Monoid
+import cats.Show
+import java.time.Instant
+import java.time.Duration
+import io.chrisdavenport.cats.time._
 
 /**
   * Representation of a solution for a constraint defined by an arbitrary number of intervals.
   * The intervals are sorted by their start time and don't overlap or abut, i.e. the solution is always represented
   * by the smallest possible set of intervals.
   */
-case class Solution(intervals: Seq[Interval]) {
+case class Solution(intervals: List[Interval]) {
 
-  /** True if the solution (i.e. any of its intervals) contains time t. */
-  def contains(t: Long) = intervals.exists(_.contains(t))
+  /** True if the solution (i.e. any of its intervals) contains instant i. */
+  def contains(i: Instant) = intervals.exists(_.contains(i))
 
-  def never: Boolean         = intervals.size == 0
-  def earliest: Option[Long] = intervals.headOption.map(_.start)
-  def latest: Option[Long]   = intervals.lastOption.map(_.end)
-  def duration: Long         = intervals.map(_.duration).sum
+  def never: Boolean            = intervals.size == 0
+  def earliest: Option[Instant] = intervals.headOption.map(_.start)
+  def latest: Option[Instant]   = intervals.lastOption.map(_.end)
+  def duration: Duration        = intervals.foldMap(_.duration)
 
   /**
     * Adds a solution to this solution.
@@ -35,7 +40,7 @@ case class Solution(intervals: Seq[Interval]) {
     * @return
     */
   def add(interval: Interval): Solution =
-    Solution(addIntervals(intervals, Seq(interval)))
+    Solution(addIntervals(intervals, List(interval)))
 
   /**
     * True if any part of this solution overlaps with the given interval.
@@ -54,7 +59,7 @@ case class Solution(intervals: Seq[Interval]) {
     Solution(
       intervals
         .filter(i => i.end >= interval.start && i.start <= interval.end)
-        .map(i => Interval(Math.max(i.start, interval.start), Math.min(i.end, interval.end)))
+        .map(i => Interval(i.start.max(interval.start), i.end.min(interval.end)))
     )
 
   // def allDay(localTime: TimeZone): Solution = {
@@ -99,7 +104,7 @@ case class Solution(intervals: Seq[Interval]) {
     * @param otherIntervals
     * @return
     */
-  def combine(otherIntervals: Seq[Interval]): Solution =
+  def combine(otherIntervals: List[Interval]): Solution =
     Solution(Interval.combine(intervals, otherIntervals))
 
   /**
@@ -116,13 +121,13 @@ case class Solution(intervals: Seq[Interval]) {
     */
   def reduce(s: Solution): Solution = Solution(Interval.reduce(intervals, s.intervals))
 
-  def reduce(otherIntervals: Seq[Interval]): Solution =
+  def reduce(otherIntervals: List[Interval]): Solution =
     Solution(Interval.reduce(intervals, otherIntervals))
 
   // ===== helpers
 
-  private def addIntervals(i1: Seq[Interval], i2: Seq[Interval]): Seq[Interval] =
-    if (i1.isEmpty && i2.isEmpty) Seq()
+  private def addIntervals(i1: List[Interval], i2: List[Interval]): List[Interval] =
+    if (i1.isEmpty && i2.isEmpty) List.empty
     else if (!i1.isEmpty && i2.isEmpty) i1
     else if (i1.isEmpty && !i2.isEmpty) i2
     else if (i1.last.abuts(i2.head)) (i1.dropRight(1) :+ i1.last.plus(i2.head)) ++ i2.tail
@@ -136,13 +141,27 @@ case class Solution(intervals: Seq[Interval]) {
 object Solution {
 
   /** Solution that is always true (i.e. for any time t). */
-  val Always = new Solution(Seq(Interval(0, Long.MaxValue)))
+  val Always = new Solution(List(Interval(Instant.MIN, Instant.MAX)))
 
   /** Solution that is never true. */
   val Never = Solution()
 
   /** Convenience constructors. */
-  def apply(): Solution = new Solution(Seq())
-  def apply(start:    Long, end: Long) = new Solution(Seq(Interval(start, end)))
-  def apply(interval: Interval): Solution = apply(Seq(interval))
+  def apply(): Solution = new Solution(List.empty)
+  def apply(start:    Instant, end: Instant) = new Solution(List(Interval(start, end)))
+  def apply(interval: Interval): Solution = apply(List(interval))
+
+  /** @group Typeclass Instances */
+  implicit val SolutionShow: Show[Solution] =
+    Show.fromToString
+
+  /** @group Typeclass Instances */
+  implicit val SolutionEqual: Eq[Solution] = Eq.fromUniversalEquals
+
+  /** @group Typeclass Instances */
+  implicit object SolutionMonoid extends Monoid[Solution] {
+    def empty: Solution = Solution.Never
+
+    def combine(x: Solution, y: Solution): Solution = x.combine(y)
+  }
 }

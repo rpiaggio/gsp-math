@@ -17,7 +17,7 @@ trait ArbInterval {
         a <- arbitrary[Instant]
         b <- arbitrary[Instant]
       } yield {
-        val ab = List(a.toEpochMilli, b.toEpochMilli).sorted
+        val ab = List(a, b).sorted
         Interval(ab(0), ab(1))
       }
     )

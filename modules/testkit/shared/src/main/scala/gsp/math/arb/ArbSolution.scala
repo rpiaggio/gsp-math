@@ -22,7 +22,7 @@ trait ArbSolution {
             list.sorted
               .grouped(2)
               .collect {
-                case List(a, b) => Interval(a.toEpochMilli, b.toEpochMilli)
+                case List(a, b) => Interval(a, b)
               }
               .toList
           )

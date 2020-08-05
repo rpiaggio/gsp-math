@@ -29,9 +29,9 @@ trait TargetCalculator extends Calculator {
   // require(site == Site.GN || site == Site.GS)
 
   val place: Place
-  val targetLocation: Long => Coordinates
+  val targetLocation: Instant => Coordinates
 
-  val values: Vector[SkyCalcResults] = calculate()
+  val values: List[SkyCalcResults] = calculate()
 
   // ==  Gets the first of all calculated values for a given field, use this if only one value was calculated. ==
   lazy val elevation: Double        = valueAt(_.altitudeRaw, start)
@@ -42,31 +42,28 @@ trait TargetCalculator extends Calculator {
   lazy val hourAngle: Double        = valueAt(_.hourAngleRaw, start)
   lazy val skyBrightness: Double    = valueAt(_.totalSkyBrightness, start)
 
-  // == Accessor for a value by its field enumerator and a time.
-  // def valueAt(field: Field, t: Long): Double = valueAt(field.id, t)
-
   // ==  Accessors for any calculated values for a given field, use this if an interval of values was sampled. ==
-  def elevationAt(t: Long): Double = valueAt(_.altitudeRaw, t)
+  def elevationAt(i: Instant): Double = valueAt(_.altitudeRaw, i)
   lazy val minElevation: Double  = min(_.altitudeRaw)
   lazy val maxElevation: Double  = max(_.altitudeRaw)
   lazy val meanElevation: Double = mean(_.altitudeRaw)
 
-  def azimuthAt(t: Long): Double = valueAt(_.azimuthRaw, t)
+  def azimuthAt(i: Instant): Double = valueAt(_.azimuthRaw, i)
   lazy val minAzimuth: Double  = min(_.azimuthRaw)
   lazy val maxAzimuth: Double  = max(_.azimuthRaw)
   lazy val meanAzimuth: Double = mean(_.azimuthRaw)
 
-  def airmassAt(t: Long): Double = valueAt(_.airmass, t)
+  def airmassAt(i: Instant): Double = valueAt(_.airmass, i)
   lazy val minAirmass: Double  = min(_.airmass)
   lazy val maxAirmass: Double  = max(_.airmass)
   lazy val meanAirmass: Double = mean(_.airmass)
 
-  def lunarDistanceAt(t: Long): Double = valueAt(_.lunarDistance, t)
+  def lunarDistanceAt(i: Instant): Double = valueAt(_.lunarDistance, i)
   lazy val minLunarDistance: Double  = min(_.lunarDistance)
   lazy val maxLunarDistance: Double  = max(_.lunarDistance)
   lazy val meanLunarDistance: Double = mean(_.lunarDistance)
 
-  def parallacticAngleAt(t: Long): Double = valueAt(_.parallacticAngleRaw, t)
+  def parallacticAngleAt(i: Instant): Double = valueAt(_.parallacticAngleRaw, i)
   lazy val minParallacticAngle: Double  = min(_.parallacticAngleRaw)
   lazy val maxParallacticAngle: Double  = max(_.parallacticAngleRaw)
   lazy val meanParallacticAngle: Double = mean(_.parallacticAngleRaw)
@@ -104,12 +101,12 @@ trait TargetCalculator extends Calculator {
     else Some(weightedAngles.sum / weightedSum)
   }
 
-  def hourAngleAt(t: Long): Double = valueAt(_.hourAngleRaw, t)
+  def hourAngleAt(i: Instant): Double = valueAt(_.hourAngleRaw, i)
   lazy val minHourAngle: Double   = min(_.hourAngleRaw)
   lazy val maxHoursAngle: Double  = max(_.hourAngleRaw)
   lazy val meanHoursAngle: Double = mean(_.hourAngleRaw)
 
-  def skyBrightnessAt(t: Long): Double = valueAt(_.totalSkyBrightness, t)
+  def skyBrightnessAt(i: Instant): Double = valueAt(_.totalSkyBrightness, i)
   lazy val minSkyBrightness: Double  = min(_.totalSkyBrightness)
   lazy val maxSkyBrightness: Double  = max(_.totalSkyBrightness)
   lazy val meanSkyBrightness: Double = mean(_.totalSkyBrightness)
@@ -118,59 +115,54 @@ trait TargetCalculator extends Calculator {
     * Calculates all values for the given times.
     * @return
     */
-  protected def calculate(): Vector[SkyCalcResults] = {
+  protected def calculate(): List[SkyCalcResults] = {
     val skycalc = ImprovedSkyCalc(place)
 
-    times.map(t => skycalc.calculate(targetLocation(t), Instant.ofEpochMilli(t), true))
+    times.map(i => skycalc.calculate(targetLocation(i), i, true))
   }
 }
 
 case class IntervalTargetCalculator(
   place:          Place,
-  targetLocation: Long => Coordinates,
+  targetLocation: Instant => Coordinates,
   defined:        Interval,
-  rate:           Long
+  rate:           Duration
 ) extends FixedRateCalculator
     with LinearInterpolatingCalculator
     with TargetCalculator
 
 case class SampleTargetCalculator(
   place:          Place,
-  targetLocation: Long => Coordinates,
-  times:          Vector[Long]
+  targetLocation: Instant => Coordinates,
+  times:          List[Instant]
 ) extends IrregularIntervalCalculator
     with LinearInterpolatingCalculator
     with TargetCalculator
 
 case class SingleValueTargetCalculator(
   place:          Place,
-  targetLocation: Long => Coordinates,
-  time:           Long
+  targetLocation: Instant => Coordinates,
+  time:           Instant
 ) extends SingleValueCalculator
     with TargetCalculator
 
 object TargetCalculator {
 
-  /** Enumeration that defines the different fields for this calculator for indexed access in sequence. */
-  object Fields extends Enumeration {
-    type Field = Value
-    val Elevation, Azimuth, Airmass, LunarDistance, ParallacticAngle, HourAngle, SkyBrightness =
-      Value
-  }
+  def apply(
+    place:          Place,
+    targetLocation: Instant => Coordinates,
+    defined:        Interval,
+    rate:           Duration = Duration.ofSeconds(30)
+  ) =
+    new IntervalTargetCalculator(place, targetLocation, defined, rate)
+
+  def apply(place: Place, targetLocation: Instant => Coordinates, time: Instant): TargetCalculator =
+    new SingleValueTargetCalculator(place, targetLocation, time)
 
   def apply(
     place:          Place,
-    targetLocation: Long => Coordinates,
-    defined:        Interval,
-    rate:           Long = Duration.ofSeconds(30).toMillis
-  ) =
-    new IntervalTargetCalculator(place, targetLocation, defined, rate)
-  def apply(place:  Place, targetLocation: Long => Coordinates, time: Long): TargetCalculator =
-    new SingleValueTargetCalculator(place, targetLocation, time)
-  def apply(
-    place:          Place,
-    targetLocation: Long => Coordinates,
-    times:          Vector[Long]
+    targetLocation: Instant => Coordinates,
+    times:          List[Instant]
   ): TargetCalculator =
     new SampleTargetCalculator(place, targetLocation, times)
 }

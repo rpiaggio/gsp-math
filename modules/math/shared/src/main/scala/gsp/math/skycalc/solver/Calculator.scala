@@ -3,7 +3,11 @@
 
 package gsp.math.skycalc.solver
 
+import cats.implicits._
 import gsp.math.skycalc.SkyCalcResults
+import java.time.Instant
+import java.time.Duration
+import io.chrisdavenport.cats.time._
 
 /**
   * Base trait for all calculators.
@@ -12,20 +16,23 @@ import gsp.math.skycalc.SkyCalcResults
   */
 trait Calculator {
 
-  val times: Vector[Long]
-  def toIndex(t: Long): Int
-  val values: Vector[SkyCalcResults]
+  val times: List[Instant]
+  def toIndex(i: Instant): Int
+  val values: List[SkyCalcResults]
 
-  lazy val start   = times.head
-  lazy val end     = times.last
-  lazy val samples = times.size
+  lazy val start: Instant = times.head
+  lazy val end: Instant   = times.last
+  lazy val samples: Int   = times.size
 
   /** True if the values for the given time are covered by this target. */
-  def isDefinedAt(t:     Long)                     = t >= start && t <= end
-  def value(ix:          Int) = values(ix)
+  def isDefinedAt(i:     Instant): Boolean                                  =
+    i >= start && i <= end
+  def value(ix:          Int): SkyCalcResults = values(ix)
   // def valueAt(t:         Long) = values(toIndex(t))
-  def valueAt(field:     SkyCalcResults => Double, t: Long) = field(values(toIndex(t)))
-  def timedValues(field: SkyCalcResults => Double) = times.zip(values.map(field))
+  def valueAt(field:     SkyCalcResults => Double, i: Instant): Double =
+    field(values(toIndex(i)))
+  def timedValues(field: SkyCalcResults => Double): List[(Instant, Double)] =
+    times.zip(values.map(field))
 
   def min(field:  SkyCalcResults => Double): Double = field(values.minBy(field))
   def max(field:  SkyCalcResults => Double): Double = field(values.maxBy(field))
@@ -37,9 +44,9 @@ trait Calculator {
   * Define a single time to make this work.
   */
 trait SingleValueCalculator extends Calculator {
-  val time: Long
-  val times = Vector(time)
-  def toIndex(t: Long) = 0
+  val time: Instant
+  val times = List(time)
+  def toIndex(i: Instant) = 0
 }
 
 /**
@@ -47,36 +54,38 @@ trait SingleValueCalculator extends Calculator {
   * Define an interval and a sampling rate to make this work.
   */
 trait FixedRateCalculator extends Calculator {
-  require(rate > 0)
+  require(rate > Duration.ZERO)
 
   val defined: Interval
-  val rate: Long
+  val rate: Duration
 
   // the number of samples we need to have a sampling rate >= than expected
-  private val cnt: Int            = Math.ceil(defined.duration.toDouble / rate).toInt
+  private val cnt: Int            = math.ceil(defined.duration.toNanos.toDouble / rate.toNanos).toInt
   // the precise rate in milliseconds that corresponds to the expected rate
-  private val preciseRate: Double = defined.duration.toDouble / cnt
+  private val preciseRate: Double = defined.duration.toMillis.toDouble / cnt
 
   /** Calculates a vector with times that cover the given interval. */
-  val times: Vector[Long] = {
+  val times: List[Instant] = {
     val ts = for {
       i <- 0 to cnt
-    } yield Math.ceil(defined.start + i * preciseRate).toLong // always round up
-    require(ts.head == defined.start)
+    } yield Instant.ofEpochMilli(
+      math.ceil(defined.start.toEpochMilli + i * preciseRate).toLong
+    ) // always round up
+    require(ts.head === defined.start)
     require(ts.last >= defined.end)
-    Vector(ts: _*)
+    List(ts: _*)
   }
 
   /** Gets the index to the left of the given value t. */
-  def toIndex(t: Long) = {
-    require(t >= start)
-    require(t <= end)
+  def toIndex(i: Instant) = {
+    require(i >= start)
+    require(i <= end)
     val ix =
-      Math
-        .floor((t - start) / preciseRate)
+      math
+        .floor(Interval(start, i).duration.toMillis / preciseRate)
         .toInt // always round down; the sample at this index gives a value <= t
-    require(times(ix) <= t)
-    require(ix == samples - 1 || times(ix + 1) > t)
+    require(times(ix) <= i)
+    require(ix == samples - 1 || times(ix + 1) > i)
     ix
   }
 
@@ -90,13 +99,13 @@ trait IrregularIntervalCalculator extends Calculator {
   require(times.size > 0)
 
   /** Irregular interval calculators need to define a vector of times at which to sample the data. */
-  val times: Vector[Long]
+  val times: List[Instant]
 
   /** Gets the index to the left of the given value t. */
-  def toIndex(t: Long) = {
-    require(t >= start)
-    require(t <= end)
-    val ix = times.zipWithIndex.reverse.dropWhile(_._1 > t).head._2
+  def toIndex(i: Instant) = {
+    require(i >= start)
+    require(i <= end)
+    val ix = times.zipWithIndex.reverse.dropWhile(_._1 > i).head._2
     // postconditions: useful for debugging / documentation
     // require(ix >= 0 && ix < samples)
     // require(times(ix) <= t && (ix == samples-1 || times(ix+1) > t))
@@ -110,19 +119,20 @@ trait IrregularIntervalCalculator extends Calculator {
 trait LinearInterpolatingCalculator extends Calculator {
 
   /**
-    * Gets the value at time t. If t falls between two values a linear approximation for the value is calculated
+    * Gets the value at instant i. If t falls between two values a linear approximation for the value is calculated
     * from the values to the left and to the right.
     */
-  override def valueAt(field: SkyCalcResults => Double, t: Long): Double = {
-    val ix = toIndex(t)
-    val t0 = times(ix)
+  override def valueAt(field: SkyCalcResults => Double, i: Instant): Double = {
+    val ix = toIndex(i)
+    val i0 = times(ix)
     val v0 = field(values(ix))
-    if (t0 == t || ix == samples - 1) v0
+    if (i0 === i || ix === samples - 1) v0
     else {
-      val t1 = times(ix + 1)
+      val i1 = times(ix + 1)
       // require(t0 <= t && t < t1)
       val v1 = field(values(ix + 1))
-      val v  = v0 + (t - t0).toDouble / (t1 - t0) * (v1 - v0)
+      val v  =
+        v0 + (i.toEpochMilli - i0.toEpochMilli).toDouble / (i1.toEpochMilli - i0.toEpochMilli) * (v1 - v0)
       // require((v0 >= v1 && v0 >= v && v >= v1) || (v0 < v1 && v0 <= v && v <= v1))
       v
     }

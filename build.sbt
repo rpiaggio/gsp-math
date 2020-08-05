@@ -10,7 +10,7 @@ lazy val scalaJavaTimeVersion        = "2.0.0"
 lazy val geminiLocalesVersion        = "0.5.0"
 lazy val jtsVersion                  = "0.0.9"
 lazy val svgdotjsVersion             = "0.0.1"
-lazy val newType                     = "0.4.4"
+lazy val catsTimeVersion             = "0.3.1-SNAPSHOT"
 
 inThisBuild(
   Seq(
@@ -33,7 +33,8 @@ lazy val math = crossProject(JVMPlatform, JSPlatform)
       "com.github.julien-truffaut" %%% "monocle-core"            % monocleVersion,
       "com.github.julien-truffaut" %%% "monocle-macro"           % monocleVersion,
       "org.scala-lang.modules"     %%% "scala-collection-compat" % collCompatVersion,
-      "edu.gemini"                 %%% "gpp-jts"                 % jtsVersion
+      "edu.gemini"                 %%% "gpp-jts"                 % jtsVersion,
+      "io.chrisdavenport"          %%% "cats-time"               % catsTimeVersion
     )
   )
   .jvmConfigure(_.enablePlugins(AutomateHeaderPlugin))
