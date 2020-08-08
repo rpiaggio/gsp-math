@@ -21,54 +21,22 @@ import gsp.math.skycalc.SkyCalcResults
   * If in doubt use {@link isDefinedAt} to make sure that values for a given time are actually calculated before
   * accessing them, otherwise an out of bounds exception will be thrown.
   */
-trait TargetCalculator extends Calculator {
+trait TargetCalculator[G] extends Calculator[SkyCalcResults, G] {
+
   val place: Place
   val targetLocation: Instant => Coordinates
 
-  val values: List[SkyCalcResults] = calculate()
+  val skycalc = ImprovedSkyCalc(place)
 
-  // ==  Gets the first of all calculated values for a given field, use this if only one value was calculated. ==
-  lazy val elevation: Double        = valueAt(_.altitudeRaw, start)
-  lazy val azimuth: Double          = valueAt(_.azimuthRaw, start)
-  lazy val airmass: Double          = valueAt(_.airmass, start)
-  lazy val lunarDistance: Double    = valueAt(_.lunarDistance, start)
-  lazy val parallacticAngle: Double = valueAt(_.parallacticAngleRaw, start)
-  lazy val hourAngle: Double        = valueAt(_.hourAngleRaw, start)
-  lazy val skyBrightness: Double    = valueAt(_.totalSkyBrightness, start)
-
-  // ==  Accessors for any calculated values for a given field, use this if an interval of values was sampled. ==
-  def elevationAt(i: Instant): Double = valueAt(_.altitudeRaw, i)
-  lazy val minElevation: Double  = min(_.altitudeRaw)
-  lazy val maxElevation: Double  = max(_.altitudeRaw)
-  lazy val meanElevation: Double = mean(_.altitudeRaw)
-
-  def azimuthAt(i: Instant): Double = valueAt(_.azimuthRaw, i)
-  lazy val minAzimuth: Double  = min(_.azimuthRaw)
-  lazy val maxAzimuth: Double  = max(_.azimuthRaw)
-  lazy val meanAzimuth: Double = mean(_.azimuthRaw)
-
-  def airmassAt(i: Instant): Double = valueAt(_.airmass, i)
-  lazy val minAirmass: Double  = min(_.airmass)
-  lazy val maxAirmass: Double  = max(_.airmass)
-  lazy val meanAirmass: Double = mean(_.airmass)
-
-  def lunarDistanceAt(i: Instant): Double = valueAt(_.lunarDistance, i)
-  lazy val minLunarDistance: Double  = min(_.lunarDistance)
-  lazy val maxLunarDistance: Double  = max(_.lunarDistance)
-  lazy val meanLunarDistance: Double = mean(_.lunarDistance)
-
-  def parallacticAngleAt(i: Instant): Double = valueAt(_.parallacticAngleRaw, i)
-  lazy val minParallacticAngle: Double  = min(_.parallacticAngleRaw)
-  lazy val maxParallacticAngle: Double  = max(_.parallacticAngleRaw)
-  lazy val meanParallacticAngle: Double = mean(_.parallacticAngleRaw)
+  val result: Instant => SkyCalcResults = i => skycalc.calculate(targetLocation(i), i, true)
 
   // If the target is visible during the scheduled time, return the weighted mean parallactic angle as Some(angle in degrees).
   // Otherwise, the target is not visible, so return None.
   lazy val weightedMeanParallacticAngle: Option[Double] = {
-    val (weightedAngles, weights) = values
+    val (weightedAngles, weights) = results
       .map(_.parallacticAngleRaw)
-      .zip(times)
-      .zip(values.map(_.airmass))
+      .zip(instants)
+      .zip(results.map(_.airmass))
       .map {
         case ((angle, t), airmass) =>
           // Wrap negative angles as per Andy's comment in OCSADV-16.
@@ -91,72 +59,56 @@ trait TargetCalculator extends Calculator {
       .unzip
 
     val weightedSum = weights.sum
-    if (weightedSum == 0) None
-    else Some(weightedAngles.sum / weightedSum)
-  }
-
-  def hourAngleAt(i: Instant): Double = valueAt(_.hourAngleRaw, i)
-  lazy val minHourAngle: Double   = min(_.hourAngleRaw)
-  lazy val maxHoursAngle: Double  = max(_.hourAngleRaw)
-  lazy val meanHoursAngle: Double = mean(_.hourAngleRaw)
-
-  def skyBrightnessAt(i: Instant): Double = valueAt(_.totalSkyBrightness, i)
-  lazy val minSkyBrightness: Double  = min(_.totalSkyBrightness)
-  lazy val maxSkyBrightness: Double  = max(_.totalSkyBrightness)
-  lazy val meanSkyBrightness: Double = mean(_.totalSkyBrightness)
-
-  /**
-    * Calculates all values for the given times.
-    * @return
-    */
-  protected def calculate(): List[SkyCalcResults] = {
-    val skycalc = ImprovedSkyCalc(place)
-
-    times.map(i => skycalc.calculate(targetLocation(i), i, true))
+    if (weightedSum == 0)
+      None
+    else
+      Some(weightedAngles.sum / weightedSum)
   }
 }
-
-case class IntervalTargetCalculator(
-  place:          Place,
-  targetLocation: Instant => Coordinates,
-  defined:        Interval,
-  rate:           Duration
-) extends FixedRateCalculator
-    with LinearInterpolatingCalculator
-    with TargetCalculator
-
-case class SampleTargetCalculator(
-  place:          Place,
-  targetLocation: Instant => Coordinates,
-  times:          List[Instant]
-) extends IrregularIntervalCalculator
-    with LinearInterpolatingCalculator
-    with TargetCalculator
 
 case class SingleValueTargetCalculator(
   place:          Place,
   targetLocation: Instant => Coordinates,
-  time:           Instant
-) extends SingleValueCalculator
-    with TargetCalculator
+  instant:        Instant
+) extends SingleValueCalculator[SkyCalcResults]
+    with TargetCalculator[GetterStrategy.Exact]
+
+case class IntervalTargetCalculator(
+  place:          Place,
+  targetLocation: Instant => Coordinates,
+  interval:       Interval,
+  rate:           Duration
+) extends FixedRateCalculator[SkyCalcResults]
+    with TargetCalculator[GetterStrategy.LinearInterpolating]
+
+case class SampleTargetCalculator(
+  place:          Place,
+  targetLocation: Instant => Coordinates,
+  instants:       List[Instant]
+) extends IrregularIntervalCalculator[SkyCalcResults]
+    with TargetCalculator[GetterStrategy.LinearInterpolating]
 
 object TargetCalculator {
+  def apply(
+    place:          Place,
+    targetLocation: Instant => Coordinates,
+    instant:        Instant
+  ): SingleValueTargetCalculator =
+    SingleValueTargetCalculator(place, targetLocation, instant)
 
   def apply(
     place:          Place,
     targetLocation: Instant => Coordinates,
-    defined:        Interval,
+    interval:       Interval,
     rate:           Duration = Duration.ofSeconds(30)
-  ) =
-    new IntervalTargetCalculator(place, targetLocation, defined, rate)
-
-  def apply(place: Place, targetLocation: Instant => Coordinates, time: Instant): TargetCalculator =
-    new SingleValueTargetCalculator(place, targetLocation, time)
+  ): IntervalTargetCalculator =
+    IntervalTargetCalculator(place, targetLocation, interval, rate)
 
   def apply(
     place:          Place,
     targetLocation: Instant => Coordinates,
-    times:          List[Instant]
-  ): TargetCalculator =
-    new SampleTargetCalculator(place, targetLocation, times)
+    instants:       List[Instant]
+  ): SampleTargetCalculator =
+    SampleTargetCalculator(place, targetLocation, instants)
+
 }

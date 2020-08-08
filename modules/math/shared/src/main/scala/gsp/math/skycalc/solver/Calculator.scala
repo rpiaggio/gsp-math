@@ -4,137 +4,104 @@
 package gsp.math.skycalc.solver
 
 import cats.implicits._
-import gsp.math.skycalc.SkyCalcResults
 import java.time.Instant
 import java.time.Duration
 import io.chrisdavenport.cats.time._
 
+object GetterStrategy {
+  sealed trait Exact
+  sealed trait LinearInterpolating
+}
+
+trait ResultValueGetter[G, A] {
+  def get[Results](
+    timedResults: List[(Instant, Results)],
+    toIndex:      Instant => Int,
+    field:        Results => A,
+    instant:      Instant
+  ): A
+}
+
 /**
   * Base trait for all calculators.
-  * A calculator basically holds a matrix of values which are sampled at defined points in time over a given interval.
-  * For each sampling point in time a vector with an arbitrary number of values can be stored.
+  * A calculator basically holds a list of results which are sampled at defined points in time over a given interval.
   */
-trait Calculator {
-
-  val times: List[Instant]
+trait Calculator[R, G] { // Results, GetterStrategy
+  val instants: List[Instant]
   def toIndex(i: Instant): Int
-  val values: List[SkyCalcResults]
+  val result: Instant => R
 
-  lazy val start: Instant = times.head
-  lazy val end: Instant   = times.last
-  lazy val samples: Int   = times.size
+  lazy val start: Instant   = instants.head
+  lazy val end: Instant     = instants.last
+  lazy val sampleCount: Int = instants.size
+
+  lazy val results: List[R]                 = instants.map(result)
+  lazy val timedResults: List[(Instant, R)] = instants.zip(results)
 
   /** True if the values for the given time are covered by this target. */
-  def isDefinedAt(i:     Instant): Boolean                                  =
+  def isDefinedAt(i: Instant): Boolean =
     i >= start && i <= end
-  def value(ix:          Int): SkyCalcResults = values(ix)
-  def valueAt(field:     SkyCalcResults => Double, i: Instant): Double =
-    field(values(toIndex(i)))
-  def timedValues(field: SkyCalcResults => Double): List[(Instant, Double)] =
-    times.zip(values.map(field))
 
-  def min(field:  SkyCalcResults => Double): Double = field(values.minBy(field))
-  def max(field:  SkyCalcResults => Double): Double = field(values.maxBy(field))
-  def mean(field: SkyCalcResults => Double): Double = values.map(field).sum / samples
+  def result(ix: Int): R = results(ix)
+
+  def valueAt[A](field: R => A, i: Instant)(implicit
+    getter:             ResultValueGetter[G, A]
+  ): A =
+    getter.get(timedResults, toIndex, field, i)
+
+  def timedValues[A](field:   R => A): List[(Instant, A)] =
+    timedResults.map { case (i, r) => (i, field(r)) }
+
+  def min[A: Ordering](field: R => A): A                  = field(results.minBy(field))
+  def max[A: Ordering](field: R => A): A                  = field(results.maxBy(field))
+  def mean(field:             R => Double): Double        = results.map(field).sum / sampleCount
 }
 
-/**
-  * Base trait for all calculators that provide a sampling of values over time at a given rate.
-  * Define a single time to make this work.
-  */
-trait SingleValueCalculator extends Calculator {
-  val time: Instant
-  val times = List(time)
+trait SingleValueCalculator[R] extends Calculator[R, GetterStrategy.Exact] {
+  import implicits.exactValueGetter
+
+  val instant: Instant
+  val instants = List(instant)
   def toIndex(i: Instant) = 0
+
+  def value[A](field: R => A): A =
+    valueAt(field, start)
 }
 
-/**
-  * Base trait for all calculators that provide a sampling of values over time at a given rate.
-  * Define an interval and a sampling rate to make this work.
-  */
-trait FixedRateCalculator extends Calculator {
+trait FixedRateCalculator[R] extends Calculator[R, GetterStrategy.LinearInterpolating] {
   require(rate > Duration.ZERO)
 
-  val defined: Interval
+  val interval: Interval
   val rate: Duration
 
-  // the number of samples we need to have a sampling rate >= than expected
-  private val cnt: Int            = math.ceil(defined.duration.toNanos.toDouble / rate.toNanos).toInt
-  // the precise rate in milliseconds that corresponds to the expected rate
-  private val preciseRate: Double = defined.duration.toMillis.toDouble / cnt
+  private val maxEnd: Instant = interval.end.plus(rate)
 
   /** Calculates a vector with times that cover the given interval. */
-  val times: List[Instant] = {
-    val ts = for {
-      i <- 0 to cnt
-    } yield Instant.ofEpochMilli(
-      math.ceil(defined.start.toEpochMilli + i * preciseRate).toLong
-    ) // always round up
-    require(ts.head === defined.start)
-    require(ts.last >= defined.end)
-    List(ts: _*)
-  }
+  val instants: List[Instant] =
+    List.unfold(interval.start) {
+      case i if i < maxEnd => (i, i.plus(rate)).some
+      case _               => none
+    }
 
   /** Gets the index to the left of the given value t. */
-  def toIndex(i: Instant) = {
+  def toIndex(i: Instant): Int = {
     require(i >= start)
     require(i <= end)
-    val ix =
-      math
-        .floor((i.toEpochMilli - start.toEpochMilli) / preciseRate)
-        .toInt // always round down; the sample at this index gives a value <= t
-    require(times(ix) <= i)
-    require(ix == samples - 1 || times(ix + 1) > i)
-    ix
+    (Duration.between(start, i).toNanos / rate.toNanos).toInt
   }
-
 }
 
-/**
-  * Sampling at irregular intervals e.g middle dark time etc.
-  * Define a vector with sampling times to make this work.
-  */
-trait IrregularIntervalCalculator extends Calculator {
-  require(times.size > 0)
-
-  /** Irregular interval calculators need to define a vector of times at which to sample the data. */
-  val times: List[Instant]
+trait IrregularIntervalCalculator[R] extends Calculator[R, GetterStrategy.LinearInterpolating] {
+  require(instants.size > 0)
 
   /** Gets the index to the left of the given value t. */
   def toIndex(i: Instant) = {
     require(i >= start)
     require(i <= end)
-    val ix = times.zipWithIndex.reverse.dropWhile(_._1 > i).head._2
+    val ix = instants.zipWithIndex.reverse.dropWhile(_._1 > i).head._2
     // postconditions: useful for debugging / documentation
     // require(ix >= 0 && ix < samples)
     // require(times(ix) <= t && (ix == samples-1 || times(ix+1) > t))
     ix
   }
-}
-
-/**
-  * Add capabilities for linear interpolation for times that fall between two calculated values.
-  */
-trait LinearInterpolatingCalculator extends Calculator {
-
-  /**
-    * Gets the value at instant i. If t falls between two values a linear approximation for the value is calculated
-    * from the values to the left and to the right.
-    */
-  override def valueAt(field: SkyCalcResults => Double, i: Instant): Double = {
-    val ix = toIndex(i)
-    val i0 = times(ix)
-    val v0 = field(values(ix))
-    if (i0 === i || ix === samples - 1) v0
-    else {
-      val i1 = times(ix + 1)
-      // require(t0 <= t && t < t1)
-      val v1 = field(values(ix + 1))
-      val v  =
-        v0 + (i.toEpochMilli - i0.toEpochMilli).toDouble / (i1.toEpochMilli - i0.toEpochMilli) * (v1 - v0)
-      // require((v0 >= v1 && v0 >= v && v >= v1) || (v0 < v1 && v0 <= v && v <= v1))
-      v
-    }
-  }
-
 }

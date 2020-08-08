@@ -1,14 +1,18 @@
+// Copyright (c) 2016-2020 Association of Universities for Research in Astronomy, Inc. (AURA)
+// For license information see LICENSE or https://opensource.org/licenses/BSD-3-Clause
+
 package gsp.math.skycalc.solver
 
 import cats.tests.CatsSuite
+import gsp.math.Coordinates
+import gsp.math.Declination
+import gsp.math.RightAscension
 import java.time.ZonedDateTime
 import java.time.LocalDate
 import java.time.LocalTime
-import gsp.math.Coordinates
 import java.time.Instant
-import gsp.math.Declination
-import gsp.math.RightAscension
 import org.scalactic.Tolerance
+import implicits._
 
 /**
   * Compare some random values with results from http://catserver.ing.iac.es/staralt/index.php
@@ -18,38 +22,43 @@ import org.scalactic.Tolerance
 class TargetCalculatorSpec extends CatsSuite with Tolerance {
   import gsp.math.skycalc.GN
 
-  test("Calculates Target") {
-    val i      = ZonedDateTime.of(LocalDate.of(2014, 3, 1), LocalTime.of(20, 0, 0), GN.zoneId).toInstant
-    val c      = (_: Instant) =>
-      Coordinates(RightAscension.fromDoubleDegrees(150), Declination.fromDoubleDegrees(20).get)
-    val target = TargetCalculator(GN, c, i)
+  private val testInstant     =
+    ZonedDateTime.of(LocalDate.of(2014, 3, 1), LocalTime.of(20, 0, 0), GN.zoneId).toInstant
+  private val testCoordinates = (_: Instant) =>
+    Coordinates(RightAscension.fromDoubleDegrees(150), Declination.fromDoubleDegrees(20).get)
 
+  private def singleTargetCalculator = TargetCalculator(GN, testCoordinates, testInstant)
+
+  test("Calculates for Single Target") {
     // check definition interval
-    assert(!target.isDefinedAt(i.minusMillis(1)))
-    assert(target.isDefinedAt(i))
-    assert(!target.isDefinedAt(i.plusMillis(1)))
+    assert(!singleTargetCalculator.isDefinedAt(testInstant.minusMillis(1)))
+    assert(singleTargetCalculator.isDefinedAt(testInstant))
+    assert(!singleTargetCalculator.isDefinedAt(testInstant.plusMillis(1)))
 
     // check some values
-    assert(37.0 === target.elevation +- 1)
-    assert(1.6 === target.airmass +- 0.1)
+    assert(37.0 === singleTargetCalculator.value(_.altitudeRaw) +- 1)
+    assert(1.6 === singleTargetCalculator.value(_.airmass) +- 0.1)
   }
 
-  test("Calculates Target Interval") {
-    val i                        = ZonedDateTime.of(LocalDate.of(2014, 3, 1), LocalTime.of(20, 0, 0), GN.zoneId).toInstant
-    val c                        = (_: Instant) =>
-      Coordinates(RightAscension.fromDoubleDegrees(150), Declination.fromDoubleDegrees(20).get)
-    val interval                 = Interval(i, i.plusSeconds(4 * 60 * 60))
-    val target: TargetCalculator = TargetCalculator(GN, c, interval)
+  test("Calculates for Target in Interval") {
+    Coordinates(RightAscension.fromDoubleDegrees(150), Declination.fromDoubleDegrees(20).get)
+    val interval                 = Interval(testInstant, testInstant.plusSeconds(4 * 60 * 60))
+    val intervalTargetCalculator = TargetCalculator(GN, testCoordinates, interval)
 
     // check definition interval
-    assert(!target.isDefinedAt(interval.start.minusMillis(1)))
-    assert(target.isDefinedAt(interval.start))
-    assert(target.isDefinedAt(interval.end))
+    assert(!intervalTargetCalculator.isDefinedAt(interval.start.minusMillis(1)))
+    assert(intervalTargetCalculator.isDefinedAt(interval.start))
+    assert(intervalTargetCalculator.isDefinedAt(interval.end))
 
     // check some values
-    assert(37.0 === target.elevationAt(i) +- 1)
-    assert(1.6 === target.airmassAt(i) +- 0.1)
-    assert(89.0 === target.maxElevation +- 1)
-    assert(37.0 === target.minElevation +- 1)
+    assert(
+      37.0 === intervalTargetCalculator
+        .valueAt(_.altitude, testInstant)
+        .toAngle
+        .toSignedDoubleDegrees +- 1
+    )
+    assert(1.6 === intervalTargetCalculator.valueAt(_.airmass, testInstant) +- 0.1)
+    assert(89.0 === intervalTargetCalculator.max(_.altitude).toAngle.toSignedDoubleDegrees +- 1)
+    assert(37.0 === intervalTargetCalculator.min(_.altitude).toAngle.toSignedDoubleDegrees +- 1)
   }
 }

@@ -8,15 +8,14 @@ import java.time.Duration
 import java.time.Instant
 import io.chrisdavenport.cats.time._
 
-// import edu.gemini.skycalc.TimeUtils
-// import edu.gemini.util.skycalc.constraint.Constraint
-
 /**
   * Representation of an algorithm that finds all intervals between a start and end point in time for which a given
   * function <code>f(t: Long): Boolean</code> is true.
   */
 trait Solver[A] {
-  def solve(constraint: Constraint[A], interval: Interval, param: A): Solution
+  def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
+    getter:                   ResultValueGetter[G, A]
+  ): Solution
 }
 
 /**
@@ -28,19 +27,25 @@ trait Solver[A] {
 case class DefaultSolver[A](step: Duration = Duration.ofSeconds(30)) extends Solver[A] {
   require(step > Duration.ZERO)
 
-  def solve(constraint: Constraint[A], interval: Interval, param: A): Solution = {
+  def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
+    getter:                   ResultValueGetter[G, A]
+  ): Solution = {
 
     def solve(curStart: Instant, curState: Boolean, i: Instant, solution: Solution): Solution =
       if (i >= interval.end)
         if (curState) solution.add(Interval(curStart, interval.end))
         else solution
-      else if (constraint.metAt(i, param) == curState)
+      else if (constraint.metAt(i, calc)(getter) == curState)
         solve(curStart, curState, i.plus(step), solution)
       else if (curState)
         solve(i, curState = false, i.plus(step), solution.add(Interval(curStart, i)))
       else solve(i, curState = true, i.plus(step), solution)
 
-    solve(interval.start, constraint.metAt(interval.start, param), interval.start, Solution.Never)
+    solve(interval.start,
+          constraint.metAt(interval.start, calc)(getter),
+          interval.start,
+          Solution.Never
+    )
 
   }
 
@@ -53,11 +58,13 @@ case class DefaultSolver[A](step: Duration = Duration.ofSeconds(30)) extends Sol
 case class ParabolaSolver[A](tolerance: Duration = Duration.ofSeconds(30)) extends Solver[A] {
   require(tolerance > Duration.ZERO)
 
-  def solve(constraint: Constraint[A], interval: Interval, param: A): Solution = {
+  def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
+    getter:                   ResultValueGetter[G, A]
+  ): Solution = {
 
     def solve(s: Instant, fs: Boolean, e: Instant, fe: Boolean): Solution = {
       val m  = Instant.ofEpochMilli((s.toEpochMilli + e.toEpochMilli) / 2)
-      val fm = constraint.metAt(m, param)
+      val fm = constraint.metAt(m, calc)
       if (Interval(s, e).duration > tolerance)
         (fs, fm, fe) match {
           case (false, false, false) => solve(s, fs, m, fm).add(solve(m, fm, e, fe))
@@ -74,8 +81,8 @@ case class ParabolaSolver[A](tolerance: Duration = Duration.ofSeconds(30)) exten
 
     }
 
-    val fs = constraint.metAt(interval.start, param)
-    val fe = constraint.metAt(interval.end, param)
+    val fs = constraint.metAt(interval.start, calc)
+    val fe = constraint.metAt(interval.end, calc)
     solve(interval.start, fs, interval.end, fe)
   }
 }

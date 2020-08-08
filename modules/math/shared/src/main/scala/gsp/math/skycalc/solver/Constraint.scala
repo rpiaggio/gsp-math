@@ -3,14 +3,18 @@
 
 package gsp.math.skycalc.solver
 
+import implicits._
+import cats.implicits._
 import java.time.Duration
 import java.time.Instant
+import gsp.math.Declination
+import gsp.math.HourAngle
+import gsp.math.skycalc.SkyCalcResults
 
 // import edu.gemini.util.skycalc.Night
 
-trait Constraint[A] {
-
-  protected val solver: Solver[A] // use Scala solver from util package instead of Java one
+trait Constraint[R, A] {
+  protected val solver: Solver[A]
 
   // def solve(nights: Seq[Night], param: A): Solution =
   //   nights.map(n => solve(n, param)).foldLeft(Solution.Never)(_ add _)
@@ -19,15 +23,17 @@ trait Constraint[A] {
   //   solve(night.interval, param)
 
   /** Finds solution for an interval. */
-  def solve(interval: Interval, param: A): Solution =
-    solver.solve(this, interval, param)
+  def solve[G](interval: Interval, calc: Calculator[R, G])(implicit
+    getter:              ResultValueGetter[G, A]
+  ): Solution =
+    solver.solve(this, interval, calc)
 
-  /** This function defines the actual constraint by returning true or false for a given time <code>t</code>
+  /** This function defines the actual constraint by returning true or false for a given instant <code>i</code>
     * depending on whether to constraint is met or not.
-    * @param t
-    * @return
     */
-  def metAt(i: Instant, param: A): Boolean
+  def metAt[G](i: Instant, calc: Calculator[R, G])(implicit
+    getter:       ResultValueGetter[G, A]
+  ): Boolean
 
 }
 
@@ -36,13 +42,15 @@ trait Constraint[A] {
   * {@see edu.gemini.util.skycalc.calc.TargetCalc} object.
   */
 case class ElevationConstraint(
-  min:       Double,
-  max:       Double,
+  min:       Declination,
+  max:       Declination,
   tolerance: Duration = Duration.ofSeconds(30)
-) extends Constraint[TargetCalculator] {
-  protected val solver = DefaultSolver[TargetCalculator](tolerance)
-  def metAt(i: Instant, target: TargetCalculator): Boolean = {
-    val elevation = target.elevationAt(i)
+) extends Constraint[SkyCalcResults, Declination] {
+  protected val solver = DefaultSolver[Declination](tolerance)
+  override def metAt[G](i: Instant, calc: Calculator[SkyCalcResults, G])(implicit
+    getter:                ResultValueGetter[G, Declination]
+  ): Boolean = {
+    val elevation = calc.valueAt(_.altitude, i)
     elevation >= min && elevation <= max
   }
 }
@@ -63,10 +71,12 @@ case class SkyBrightnessConstraint(
   min:       Double,
   max:       Double,
   tolerance: Duration = Duration.ofSeconds(30)
-) extends Constraint[TargetCalculator] {
-  protected val solver = DefaultSolver[TargetCalculator](tolerance)
-  def metAt(i: Instant, target: TargetCalculator): Boolean = {
-    val skyBrightness = target.skyBrightnessAt(i)
+) extends Constraint[SkyCalcResults, Double] {
+  protected val solver = DefaultSolver[Double](tolerance)
+  override def metAt[G](i: Instant, calc: Calculator[SkyCalcResults, G])(implicit
+    getter:                ResultValueGetter[G, Double]
+  ): Boolean = {
+    val skyBrightness = calc.valueAt(_.totalSkyBrightness, i)
     skyBrightness >= min && skyBrightness <= max
   }
 }
@@ -75,24 +85,34 @@ case class AirmassConstraint(
   min:       Double,
   max:       Double,
   tolerance: Duration = Duration.ofSeconds(30)
-) extends Constraint[TargetCalculator] {
-  protected val solver = DefaultSolver[TargetCalculator](tolerance)
-  def metAt(i: Instant, target: TargetCalculator): Boolean = {
-    val airmass = target.airmassAt(i)
+) extends Constraint[SkyCalcResults, (Double, Declination)] {
+  protected val solver = DefaultSolver[(Double, Declination)](tolerance)
+  override def metAt[G](i: Instant, calc: Calculator[SkyCalcResults, G])(implicit
+    getter:                ResultValueGetter[G, (Double, Declination)]
+  ): Boolean = {
+    val airmass = calc.valueAt(_.airmass, i)
     // NOTE: we need to work around errors with interpolation etc which may cause to give wrong airmass values for very small altitudes (<1deg)
-    target.elevationAt(i) >= 5 && airmass >= min && airmass <= max
+    calc
+      .valueAt(_.altitude, i)
+      .toAngle
+      .toDoubleDegrees >= 5 && airmass >= min && airmass <= max
   }
 }
 
 case class HourAngleConstraint(
-  min:       Double,
-  max:       Double,
+  min:       HourAngle,
+  max:       HourAngle,
   tolerance: Duration = Duration.ofSeconds(30)
-) extends Constraint[TargetCalculator] {
-  protected val solver = DefaultSolver[TargetCalculator](tolerance)
-  def metAt(i: Instant, target: TargetCalculator): Boolean = {
-    val hourAngle = target.hourAngleAt(i)
+) extends Constraint[SkyCalcResults, (HourAngle, Declination)] {
+  protected val solver = DefaultSolver[(HourAngle, Declination)](tolerance)
+  override def metAt[G](i: Instant, calc: Calculator[SkyCalcResults, G])(implicit
+    getter:                ResultValueGetter[G, (HourAngle, Declination)]
+  ): Boolean = {
+    val hourAngle = calc.valueAt(_.hourAngle, i)
     // NOTE: we need to work around errors with interpolation etc which may cause to give wrong hour angle values for very small altitudes (<1deg)
-    target.elevationAt(i) >= 5 && hourAngle >= min && hourAngle <= max
+    calc
+      .valueAt(_.altitude, i)
+      .toAngle
+      .toSignedDoubleDegrees >= 5 && hourAngle.toMicroarcseconds >= min.toMicroarcseconds && hourAngle.toMicroarcseconds <= max.toMicroarcseconds
   }
 }
