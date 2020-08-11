@@ -46,23 +46,23 @@ final class IntervalSpec extends CatsSuite {
     )
   }
 
-  // TODO Move commented to ScheduleSpec
+  test("Diff By Schedule of 2") {
+    assert(
+      Schedule.unsafe(List(interval(1000, 1200), interval(1300, 1500), interval(1800, 2000))) ===
+        interval(1000, 2000).diff(Schedule.unsafe(List(interval(1200, 1300), interval(1500, 1800))))
+    )
+  }
 
-  // test("Reduce By Two") {
-  //   assert(
-  //     List(interval(1000, 1200), interval(1300, 1500), interval(1800, 2000)) ===
-  //       Interval.reduce(interval(1000, 2000), List(interval(1200, 1300), interval(1500, 1800)))
-  //   )
-  // }
-
-  // test("Reduce By Three") {
-  //   assert(
-  //     List(interval(1000, 1200), interval(1300, 1500), interval(1800, 1950)) ===
-  //       Interval.reduce(interval(1000, 2000),
-  //                       List(interval(1200, 1300), interval(1500, 1800), interval(1950, 2000))
-  //       )
-  //   )
-  // }
+  test("Diff By Schedule of 3") {
+    assert(
+      Schedule.unsafe(List(interval(1000, 1200), interval(1300, 1500), interval(1800, 1950))) ===
+        interval(1000, 2000).diff(
+          Schedule.unsafe(
+            List(interval(1200, 1300), interval(1500, 1800), interval(1950, 2000))
+          )
+        )
+    )
+  }
 
   test("Diff At Start") {
     assert(List(interval(1300, 2000)) === interval(1000, 2000).diff(interval(1000, 1300)))
@@ -71,34 +71,4 @@ final class IntervalSpec extends CatsSuite {
   test("Diff At End") {
     assert(List(interval(1000, 1700)) === interval(1000, 2000).diff(interval(1700, 2000)))
   }
-
-  // test("Reduce By Two Consecutive") {
-  //   assert(
-  //     List(interval(1000, 1200), interval(1300, 2000)) ===
-  //       Interval.reduce(interval(1000, 2000), List(interval(1200, 1250), interval(1250, 1300)))
-  //   )
-  // }
-
-  // test("Reduce By Three Consecutive") {
-  //   assert(
-  //     List(interval(1000, 1200), interval(1400, 2000)) ===
-  //       Interval.reduce(interval(1000, 2000),
-  //                       List(interval(1200, 1250), interval(1250, 1300), interval(1300, 1400))
-  //       )
-  //   )
-  // }
-
-  // test("Reduce By Two Consecutive At Head") {
-  //   assert(
-  //     List(interval(1200, 2000)) ===
-  //       Interval.reduce(interval(1000, 2000), List(interval(1000, 1100), interval(1100, 1200)))
-  //   )
-  // }
-
-  // test("Reduce By Two Consecutive At End") {
-  //   assert(
-  //     List(interval(1000, 1800)) ===
-  //       Interval.reduce(interval(1000, 2000), List(interval(1800, 1900), interval(1900, 2000)))
-  //   )
-  // }
 }

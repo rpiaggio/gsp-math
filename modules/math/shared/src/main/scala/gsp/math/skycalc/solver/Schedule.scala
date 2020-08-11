@@ -251,7 +251,12 @@ trait ScheduleOptics { self: Schedule.type =>
   /** @group Optics */
   val fromIntervals: Prism[List[Interval], Schedule] =
     Prism { intervals: List[Interval] =>
-      if (intervals.sliding(2).forall { case List(a, b) => a.end < b.start })
+      if (
+        intervals.sliding(2).forall {
+          case List(a, b) => a.end < b.start
+          case _          => true // Zero or one intervals
+        }
+      )
         (new Schedule(intervals) {}).some
       else
         none
