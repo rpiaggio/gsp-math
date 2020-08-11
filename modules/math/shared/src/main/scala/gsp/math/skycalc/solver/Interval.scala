@@ -10,6 +10,7 @@ import java.time.Duration
 import monocle.Getter
 import java.time.Instant
 import io.chrisdavenport.cats.time._
+import monocle.Prism
 
 /**
   * Representation of an interval between two points in time, including the start time and excluding the end time
@@ -17,7 +18,8 @@ import io.chrisdavenport.cats.time._
   * can not represent a single point in time (i.e. start == end) because such an interval could not contain any
   * time t for which t >= start && t < end.
   */
-case class Interval(start: Instant, end: Instant) extends Ordered[Interval] {
+sealed abstract case class Interval protected (start: Instant, end: Instant)
+    extends Ordered[Interval] {
   require(start.isBefore(end), "start of interval must be < end")
 
   /** True if this interval covers time t. */
@@ -42,103 +44,50 @@ case class Interval(start: Instant, end: Instant) extends Ordered[Interval] {
     * @param other
     * @return
     */
-  def plus(other: Interval): Interval = {
-    require(overlaps(other) || abuts(other))
-    val s = start.min(other.start)
-    val e = end.max(other.end)
-    Interval(s, e)
-  }
+  def join(other: Interval): Option[Interval] =
+    if (overlaps(other) || abuts(other))
+      Interval(start.min(other.start), end.max(other.end))
+    else
+      none
 
   /** The overlapping part of two intervals. */
-  def overlap(other: Interval): Interval = {
-    require(overlaps(other))
-    val s = start.max(other.start)
-    val e = end.min(other.end)
-    Interval(s, e)
-  }
+  def intersection(other: Interval): Option[Interval] =
+    if (overlaps(other))
+      Interval(start.max(other.start), end.min(other.end))
+    else
+      none
+
+  def diff(other: Interval): List[Interval] =
+    if (this.start < other.start && this.end > other.end)
+      List(Interval.unsafe(this.start, other.start), Interval.unsafe(other.end, this.end))
+    else if (this.start < other.start && this.end <= other.end)
+      List(Interval.unsafe(this.start, other.start))
+    else if (this.start >= other.start && this.end > other.end)
+      List(Interval.unsafe(other.end, this.end))
+    else List.empty
+
+  def diff(other: Schedule): Schedule =
+    Schedule.single(this).diff(other)
 
   /** Compares to intervals and orders them by their start time. */
   def compare(that: Interval): Int =
     start.compareTo(that.start)
 
   /** Gets duration of interval as hours. */
-  def asHours: Double = duration.toNanos.toDouble / Duration.ofHours(1).toNanos
+  // def asHours: Double = duration.toNanos.toDouble / Duration.ofHours(1).toNanos
 
   /** Gets duration of interval as days. */
-  def asDays: Double = duration.toNanos.toDouble / Duration.ofDays(1).toNanos
+  // def asDays: Double = duration.toNanos.toDouble / Duration.ofDays(1).toNanos
 }
 
 object Interval extends IntervalOptics {
+  val Always: Interval = unsafe(Instant.MIN, Instant.MAX)
 
-  def combine(left: List[Interval], right: List[Interval]): List[Interval] =
-    if (left.isEmpty && right.isEmpty) List.empty
-    else if (left.isEmpty) right
-    else if (right.isEmpty) left
-    else if (left.head.abuts(right.head) || left.head.overlaps(right.head)) {
-      val start = left.head.start.min(right.head.start)
-      val end   = left.head.end.max(right.head.end)
-      // The new Interval could overlap with other Intervals on the left, so we
-      // perform a combine with the rest of the left before proceeding.
-      combine(combine(List(new Interval(start, end)), left.tail), right.tail)
-    } else if (left.head.start < right.head.start)
-      left.head +: combine(left.tail, right)
-    else
-      right.head +: combine(left, right.tail)
+  def apply(start: Instant, end: Instant): Option[Interval] =
+    fromInstants.getOption((start, end))
 
-  def intersect(left: List[Interval], right: List[Interval]): List[Interval] =
-    if (left.isEmpty || right.isEmpty) List.empty
-    else {
-      val h1 = left.head
-      val h2 = right.head
-
-      if (!h1.overlaps(h2))
-        if (h1.end > h2.end)
-          intersect(left, right.tail)
-        else
-          intersect(left.tail, right)
-      else if (h1.end > h2.end)
-        h1.overlap(h2) +: intersect(left, right.tail)
-      else
-        h1.overlap(h2) +: intersect(left.tail, right)
-    }
-
-  def reduce(left: Interval, right: List[Interval]): List[Interval] =
-    reduce(List(left), right)
-
-  def reduce(left: List[Interval], right: List[Interval]): List[Interval] =
-    if (left.isEmpty) List.empty
-    else if (right.isEmpty) left
-    else {
-      val h1 = left.head
-      val h2 = right.head
-      if (!h1.overlaps(h2))
-        if (h1.end <= h2.start)
-          h1 +: reduce(left.tail,
-                       right
-          )                           // no overlap and h1 is before h2 => h1 won't be touched again by any h2, add it to result
-        else reduce(left, right.tail) // no overlap and h1 is after h2 => we can skip h2
-      else
-        reduce(reduce(h1, h2) ++ left.tail,
-               right
-        )                             // overlap: replace h1 with reduce(h1,h2) and continue
-    }
-
-  def reduce(i1: Interval, i2: Interval): List[Interval] =
-    if (i1.start < i2.start && i1.end > i2.end)
-      List(Interval(i1.start, i2.start), Interval(i2.end, i1.end))
-    else if (i1.start < i2.start && i1.end <= i2.end) List(Interval(i1.start, i2.start))
-    else if (i1.start >= i2.start && i1.end > i2.end) List(Interval(i2.end, i1.end))
-    else List.empty
-
-  def invert(intervals: List[Interval]): List[Interval] =
-    if (intervals.size < 2) List.empty
-    else
-      intervals
-        .sliding(2)
-        .map({
-          case List(i, j) => Interval(i.end, j.start)
-        })
-        .toList
+  def unsafe(start: Instant, end: Instant): Interval =
+    apply(start, end).get
 
   /**
     * Takes a sequence of intervals and transforms it into a sequence of full days (i.e. 14:00 first day to 14:00
@@ -195,4 +144,14 @@ trait IntervalOptics { self: Interval.type =>
   /** @group Optics */
   val end: Getter[Interval, Instant] =
     Getter(_.end)
+
+  val duration: Getter[Interval, Duration] =
+    Getter(_.duration)
+
+  /** @group Optics */
+  val fromInstants: Prism[(Instant, Instant), Interval] =
+    Prism[(Instant, Instant), Interval] {
+      case (start: Instant, end: Instant) =>
+        if (start < end) (new Interval(start, end) {}).some else none
+    }(i => (i.start, i.end))
 }

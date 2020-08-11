@@ -42,7 +42,7 @@ class TargetCalculatorSpec extends CatsSuite with Tolerance {
 
   test("Calculates for Target in Interval") {
     Coordinates(RightAscension.fromDoubleDegrees(150), Declination.fromDoubleDegrees(20).get)
-    val interval                 = Interval(testInstant, testInstant.plusSeconds(4 * 60 * 60))
+    val interval                 = Interval.unsafe(testInstant, testInstant.plusSeconds(4 * 60 * 60))
     val intervalTargetCalculator = TargetCalculator(GN, testCoordinates, interval)
 
     // check definition interval

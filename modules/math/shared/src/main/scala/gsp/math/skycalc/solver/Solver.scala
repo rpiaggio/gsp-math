@@ -7,6 +7,7 @@ import cats.implicits._
 import java.time.Duration
 import java.time.Instant
 import io.chrisdavenport.cats.time._
+import scala.annotation.tailrec
 
 /**
   * Representation of an algorithm that finds all intervals between a start and end point in time for which a given
@@ -15,7 +16,7 @@ import io.chrisdavenport.cats.time._
 trait Solver[A] {
   def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
     getter:                   ResultValueGetter[G, A]
-  ): Solution
+  ): Schedule
 }
 
 /**
@@ -29,26 +30,28 @@ case class DefaultSolver[A](step: Duration = Duration.ofSeconds(30)) extends Sol
 
   def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
     getter:                   ResultValueGetter[G, A]
-  ): Solution = {
+  ): Schedule = {
 
-    def solve(curStart: Instant, curState: Boolean, i: Instant, solution: Solution): Solution =
+    @tailrec
+    def solve(curStart: Instant, curState: Boolean, i: Instant, accum: Schedule): Schedule =
       if (i >= interval.end)
-        if (curState) solution.add(Interval(curStart, interval.end))
-        else solution
+        if (curState)
+          accum.addAfter(Interval.unsafe(curStart, interval.end)).get
+        else
+          accum
       else if (constraint.metAt(i, calc)(getter) == curState)
-        solve(curStart, curState, i.plus(step), solution)
+        solve(curStart, curState, i.plus(step), accum)
       else if (curState)
-        solve(i, curState = false, i.plus(step), solution.add(Interval(curStart, i)))
-      else solve(i, curState = true, i.plus(step), solution)
+        solve(i, curState = false, i.plus(step), accum.addAfter(Interval.unsafe(curStart, i)).get)
+      else
+        solve(i, curState = true, i.plus(step), accum)
 
     solve(interval.start,
           constraint.metAt(interval.start, calc)(getter),
           interval.start,
-          Solution.Never
+          Schedule.Never
     )
-
   }
-
 }
 
 /**
@@ -60,24 +63,26 @@ case class ParabolaSolver[A](tolerance: Duration = Duration.ofSeconds(30)) exten
 
   def solve[R, G](constraint: Constraint[R, A], interval: Interval, calc: Calculator[R, G])(implicit
     getter:                   ResultValueGetter[G, A]
-  ): Solution = {
+  ): Schedule = {
 
-    def solve(s: Instant, fs: Boolean, e: Instant, fe: Boolean): Solution = {
+    def solve(s: Instant, fs: Boolean, e: Instant, fe: Boolean): Schedule = {
       val m  = Instant.ofEpochMilli((s.toEpochMilli + e.toEpochMilli) / 2)
       val fm = constraint.metAt(m, calc)
-      if (Interval(s, e).duration > tolerance)
+      if (Interval.unsafe(s, e).duration > tolerance)
         (fs, fm, fe) match {
-          case (false, false, false) => solve(s, fs, m, fm).add(solve(m, fm, e, fe))
+          case (false, false, false) => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
           case (false, false, true)  => solve(m, fm, e, fe)
-          case (false, true, false)  => solve(s, fs, m, fm).add(solve(m, fm, e, fe))
-          case (false, true, true)   => solve(s, fs, m, fm).add(Solution(m, e))
+          case (false, true, false)  => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
+          case (false, true, true)   => solve(s, fs, m, fm).addAfter(Schedule.unsafe(m, e)).get
           case (true, false, false)  => solve(s, fs, m, fm)
-          case (true, false, true)   => solve(s, fs, m, fm).add(solve(m, fm, e, fe))
-          case (true, true, false)   => Solution(s, m).add(solve(m, fm, e, fe))
-          case (true, true, true)    => solve(s, fs, m, fm).add(solve(m, fm, e, fe))
+          case (true, false, true)   => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
+          case (true, true, false)   => Schedule.unsafe(s, m).addAfter(solve(m, fm, e, fe)).get
+          case (true, true, true)    => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
         }
-      else if (fm) Solution(Interval(s, e))
-      else Solution()
+      else if (fm)
+        Schedule.single(Interval.unsafe(s, e))
+      else
+        Schedule.Never
 
     }
 

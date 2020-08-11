@@ -5,24 +5,24 @@ package gsp.math.arb
 
 import cats.implicits._
 import gsp.math.skycalc.solver.Interval
-import gsp.math.skycalc.solver.Solution
+import gsp.math.skycalc.solver.Schedule
 import org.scalacheck._
 import org.scalacheck.Arbitrary._
 import java.time.Instant
 
-trait ArbSolution {
+trait ArbSchedule {
   import ArbTime._
 
-  implicit val arbSolution: Arbitrary[Solution] =
+  implicit val arbSolution: Arbitrary[Schedule] =
     Arbitrary {
       arbitrary[List[Instant]]
-        .suchThat(list => list.length === list.distinct.length)
+        .suchThat(list => list.length === list.distinct.length) // No duplicates
         .map { list =>
-          Solution(
+          Schedule.unsafe(
             list.sorted
               .grouped(2)
               .collect {
-                case List(a, b) => Interval(a, b)
+                case List(a, b) => Interval.unsafe(a, b)
               }
               .toList
           )
@@ -30,4 +30,4 @@ trait ArbSolution {
     }
 }
 
-object ArbSolution extends ArbSolution
+object ArbSchedule extends ArbSchedule

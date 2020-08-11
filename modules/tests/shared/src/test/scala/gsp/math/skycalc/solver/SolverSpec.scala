@@ -44,23 +44,23 @@ class SolverSpec extends CatsSuite {
     val s = DefaultSolver[Unit](Duration.ofMillis(1))
     val c = TestConstraint(s, f1)
 
-    assert(Solution(List(interval(0, 150))) === c.solve(interval(0, 200), testCalculator))
-    assert(Solution(List(interval(250, 400))) === c.solve(interval(200, 400), testCalculator))
-    assert(Solution(List(interval(250, 450))) === c.solve(interval(200, 500), testCalculator))
+    assert(Schedule(List(interval(0, 150))) === c.solve(interval(0, 200), testCalculator).some)
+    assert(Schedule(List(interval(250, 400))) === c.solve(interval(200, 400), testCalculator).some)
+    assert(Schedule(List(interval(250, 450))) === c.solve(interval(200, 500), testCalculator).some)
     assert(
-      Solution(List(interval(0, 150), interval(250, 400))) ===
-        c.solve(interval(0, 400), testCalculator)
+      Schedule(List(interval(0, 150), interval(250, 400))) ===
+        c.solve(interval(0, 400), testCalculator).some
     )
   }
 
   test("Check Parabola Solver") {
     val c = TestConstraint(ParabolaSolver[Unit](Duration.ofMillis(1)), f1)
-    assert(Solution(List(interval(0, 150))) === c.solve(interval(0, 200), testCalculator))
-    assert(Solution(List(interval(250, 400))) === c.solve(interval(200, 400), testCalculator))
-    assert(Solution(List(interval(250, 450))) === c.solve(interval(200, 500), testCalculator))
+    assert(Schedule(List(interval(0, 150))) === c.solve(interval(0, 200), testCalculator).some)
+    assert(Schedule(List(interval(250, 400))) === c.solve(interval(200, 400), testCalculator).some)
+    assert(Schedule(List(interval(250, 450))) === c.solve(interval(200, 500), testCalculator).some)
     assert(
-      Solution(List(interval(0, 150), interval(250, 400))) ===
-        c.solve(interval(0, 400), testCalculator)
+      Schedule(List(interval(0, 150), interval(250, 400))) ===
+        c.solve(interval(0, 400), testCalculator).some
     )
   }
 
@@ -71,7 +71,7 @@ class SolverSpec extends CatsSuite {
   test("Check Parabola Solver 2") {
     val c = TestConstraint(ParabolaSolver[Unit](Duration.ofMillis(1)), f2)
     assert(
-      (Solution(List(interval(5000, 6000))) === c.solve(interval(0, 10000), testCalculator))
+      (Schedule(List(interval(5000, 6000))) === c.solve(interval(0, 10000), testCalculator).some)
     )
   }
 }

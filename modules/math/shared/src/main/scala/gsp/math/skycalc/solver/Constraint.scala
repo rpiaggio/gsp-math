@@ -25,7 +25,7 @@ trait Constraint[R, A] {
   /** Finds solution for an interval. */
   def solve[G](interval: Interval, calc: Calculator[R, G])(implicit
     getter:              ResultValueGetter[G, A]
-  ): Solution =
+  ): Schedule =
     solver.solve(this, interval, calc)
 
   /** This function defines the actual constraint by returning true or false for a given instant <code>i</code>

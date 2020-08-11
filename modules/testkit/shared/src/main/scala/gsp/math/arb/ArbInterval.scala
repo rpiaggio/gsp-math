@@ -3,10 +3,12 @@
 
 package gsp.math.arb
 
+import cats.implicits._
 import gsp.math.skycalc.solver.Interval
 import org.scalacheck._
 import org.scalacheck.Arbitrary._
 import java.time.Instant
+import io.chrisdavenport.cats.time._
 
 trait ArbInterval {
   import ArbTime._
@@ -15,10 +17,10 @@ trait ArbInterval {
     Arbitrary(
       for {
         a <- arbitrary[Instant]
-        b <- arbitrary[Instant]
+        b <- arbitrary[Instant].suchThat(_ =!= a)
       } yield {
         val ab = List(a, b).sorted
-        Interval(ab(0), ab(1))
+        Interval.unsafe(ab(0), ab(1))
       }
     )
 }
