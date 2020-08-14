@@ -7,13 +7,12 @@ import cats.tests.CatsSuite
 
 import cats.Eq
 import cats.Show
-import gsp.math.arb._
 import cats.kernel.laws.discipline.EqTests
-import monocle.law.discipline.PrismTests
-import io.chrisdavenport.cats.time._
-import gsp.math.laws.discipline.FormatTests
-import monocle.law.discipline.IsoTests
 import cats.kernel.laws.discipline.OrderTests
+import monocle.law.discipline.PrismTests
+import gsp.math.laws.discipline.FormatTests
+import gsp.math.arb._
+import io.chrisdavenport.cats.time._
 
 final class IntervalSpec extends CatsSuite {
   import ArbInterval._
@@ -38,7 +37,9 @@ final class IntervalSpec extends CatsSuite {
   // Optics
   checkAll("fromOrderedInstants", PrismTests(Interval.fromOrderedInstants))
   checkAll("fromInstants", FormatTests(Interval.fromInstants).format)
-  checkAll("startDuration", IsoTests(Interval.startDuration))
+  checkAll("fromStartDuration", PrismTests(Interval.fromStartDuration))
+
+// Test contains x 2, abuts, overlaps, join, (empty) intersection, diff x 2, toFullDays
 
   test("Intersection") {
     val i1 = interval(5, 10)
@@ -46,11 +47,11 @@ final class IntervalSpec extends CatsSuite {
     val i3 = interval(6, 9)
     val i4 = interval(8, 12)
 
-    assert(interval(5, 6).some === i1.intersection(i2))
-    assert(interval(6, 9).some === i1.intersection(i3))
-    assert(interval(6, 9).some === i3.intersection(i1))
-    assert(interval(8, 10).some === i1.intersection(i4))
-
+    assert(i1.intersection(i2) === interval(5, 6).some)
+    assert(i1.intersection(i3) === i3.some)
+    assert(i3.intersection(i1) === i3.some)
+    assert(i1.intersection(i4) === interval(8, 10).some)
+    assert(i2.intersection(i3) === none)
   }
 
   // check some common and some corner cases..
