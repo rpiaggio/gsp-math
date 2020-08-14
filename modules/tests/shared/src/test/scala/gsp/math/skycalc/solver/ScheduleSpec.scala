@@ -39,17 +39,6 @@ final class ScheduleSpec extends CatsSuite {
   checkAll("fromDisjointSortedIntervals", PrismTests(Schedule.fromDisjointSortedIntervals))
   checkAll("fromIntervals", SplitEpiTests(Schedule.fromIntervals).splitEpi)
 
-  test("Extend") {
-    val s1 = Schedule.single(interval(1, 2))
-    val s2 = Schedule.single(interval(2, 5))
-    val s3 = Schedule.single(interval(8, 9))
-
-    assert(Schedule.single(interval(1, 5)).some === s1.extend(s2))
-    assert(
-      Schedule(List(interval(1, 5), interval(8, 9))) === s1.extend(s2).flatMap(_.extend(s3))
-    )
-  }
-
   test("Union") {
     val s1Opt  = Schedule(List(interval(1, 2), interval(5, 9)))
     val s2Opt  = Schedule(List(interval(2, 3), interval(4, 8), interval(11, 14)))

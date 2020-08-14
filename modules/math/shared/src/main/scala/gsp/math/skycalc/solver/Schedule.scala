@@ -13,6 +13,9 @@ import io.chrisdavenport.cats.time._
 import monocle.Getter
 import monocle.Prism
 import gsp.math.optics.SplitEpi
+import java.time.ZoneId
+import java.time.LocalTime
+import scala.annotation.tailrec
 
 /**
   * An arbitrary number of Intervals.
@@ -24,43 +27,17 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
   /** True if the Schedule (i.e. any of its intervals) contains instant i. */
   def contains(i: Instant) = intervals.exists(_.contains(i))
 
-  def isEmpty: Boolean             = intervals.isEmpty
-  def never: Boolean               = isEmpty
-  def headOption: Option[Interval] = intervals.headOption
-  def tail: Schedule               =
+  lazy val isEmpty: Boolean             = intervals.isEmpty
+  lazy val never: Boolean               = isEmpty
+  lazy val headOption: Option[Interval] = intervals.headOption
+  lazy val tail: Schedule               =
     intervals match {
       case _ :: t => Schedule.unsafe(t)
       case Nil    => Schedule.Never
     }
-  def earliest: Option[Instant]    = headOption.map(_.start)
-  def latest: Option[Instant]      = intervals.lastOption.map(_.end)
-  def duration: Duration           = intervals.foldMap(_.duration)
-
-  /**
-    * Adds a Schedule to this Schedule.
-    * @param other
-    * @return
-    */
-  def extend(other: Schedule): Option[Schedule] =
-    //This will be true if one of the lists is empty or if the condition holds
-    if (latest.zip(other.earliest).forall { case (leftEnd, rightStart) => leftEnd < rightStart })
-      Schedule(intervals ++ other.intervals)
-    else
-    // Both lists have at least one element
-    if (intervals.last.abuts(other.intervals.head))
-      Schedule(
-        (intervals.init :+ intervals.last.join(other.intervals.head).get) ++ other.intervals.tail
-      )
-    else
-      none
-
-  /**
-    * Adds an interval to this Schedule.
-    * @param interval
-    * @return
-    */
-  def extend(interval: Interval): Option[Schedule] =
-    extend(Schedule.single(interval))
+  lazy val earliest: Option[Instant]    = headOption.map(_.start)
+  lazy val latest: Option[Instant]      = intervals.lastOption.map(_.end)
+  lazy val duration: Duration           = intervals.foldMap(_.duration)
 
   /**
     * True if any part of this Schedule overlaps with the given interval.
@@ -82,35 +59,12 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
         .map(i => Interval.unsafe(i.start.max(interval.start), i.end.min(interval.end)))
     )
 
-  // def allDay(localTime: TimeZone): Schedule = {
-  //   // blow intervals up to cover 24hrs (or multiples thereof); days start/end at 14hrs local time
-  //   def blowUp(interval: Interval): Interval =
-  //     Interval(
-  //       TimeUtils.startOfDay(interval.start, localTime),
-  //       TimeUtils.endOfDay(interval.end, localTime)
-  //     )
+  // Map intervals, sort and join them when they overlap.
+  def mapIntervals(f: Interval => Interval): Schedule =
+    Schedule.fromIntervals.get(intervals.map(f))
 
-  //   // note that a single interval can stretch several days (e.g. for time windows)
-  //   def removeDuplicates(res: Seq[Interval], intervals: Seq[Interval]): Seq[Interval] =
-  //     intervals match {
-  //       case Nil          => res
-  //       case head :: Nil  =>
-  //         res :+ head
-  //       case head :: tail =>
-  //         val h = head
-  //         val t = tail.head
-  //         if (h.abuts(t) || h.overlaps(t))
-  //           removeDuplicates(res, h.plus(t) +: tail.drop(1))
-  //         else
-  //           removeDuplicates(res :+ h, tail)
-  //     }
-
-  //   if (this == Schedule.Always)
-  //     Schedule.Always // Always can not be "blown" up, don't try
-  //   else
-  //     Schedule(removeDuplicates(Seq(), intervals.map(blowUp)))
-
-  // }
+  def toFullDays(zone: ZoneId, startOfDay: LocalTime): Schedule =
+    mapIntervals(_.toFullDays(zone, startOfDay))
 
   /**
     * Combines two Schedules.
@@ -118,11 +72,15 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
     */
   def union(other: Schedule): Schedule = Schedule.union(this, other)
 
+  def union(interval: Interval): Schedule = union(Schedule.single(interval))
+
   /**
     * Intersects a Schedule with another one.
     * The result will contain all intervals of this Schedule which are covered by both Schedules.
     */
   def intersection(other: Schedule): Schedule = Schedule.intersection(this, other)
+
+  def intersection(interval: Interval): Schedule = intersection(Schedule.single(interval))
 
   /**
     * Remove from this Schedule intersections with another one.
@@ -131,6 +89,8 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
     * @return
     */
   def diff(other: Schedule): Schedule = Schedule.diff(this, other)
+
+  def diff(interval: Interval): Schedule = diff(Schedule.single(interval))
 
   def gaps: Schedule =
     if (intervals.size < 2) Schedule.Never
@@ -143,7 +103,6 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
           })
           .toList
       )
-
 }
 
 /**
@@ -172,61 +131,98 @@ object Schedule extends ScheduleOptics {
   def unsafe(start:     Instant, end: Instant): Schedule =
     apply(start, end).get
 
-  def union(left: Schedule, right: Schedule): Schedule =
-    (left.intervals, right.intervals) match {
-      case (Nil, _)                        => right
-      case (_, Nil)                        => left
-      case (leftHead :: _, rightHead :: _) =>
-        leftHead
-          .join(rightHead)
-          .fold( // Heads can't be joined: they don't about or overlap
-            if (leftHead.start < rightHead.start)
-              unsafe(leftHead +: union(left.tail, right).intervals)
-            else
-              unsafe(rightHead +: union(left, right.tail).intervals)
-          )(joined =>
-            // The new Interval could overlap with other Intervals on the left Schedule, so we
-            // perform a combine with the rest of the left before proceeding.
-            union(union(single(joined), left.tail), right.tail)
-          )
-    }
+  private def union(s1: Schedule, s2: Schedule): Schedule = {
 
-  def intersection(left: Schedule, right: Schedule): Schedule =
-    (left.intervals, right.intervals) match {
-      case (Nil, _)                        => Never
-      case (_, Nil)                        => Never
-      case (leftHead :: _, rightHead :: _) =>
-        leftHead
-          .intersection(rightHead)
-          .fold( // Heads can't be joined: they don't about or overlap
-            if (leftHead.end > rightHead.end)
-              intersection(left, unsafe(right.intervals.tail))
-            else
-              intersection(left.tail, right)
-          )(intersected =>
-            if (leftHead.end > rightHead.end)
-              unsafe(intersected +: intersection(left, right.tail).intervals)
-            else
-              unsafe(intersected +: intersection(left.tail, right).intervals)
-          )
-    }
+    @tailrec
+    def joinInitial(
+      head: Interval,
+      tail: List[Interval]
+    ): List[Interval] =
+      tail match {
+        case Nil                  => List(head)
+        case tailHead :: tailTail =>
+          head.join(tailHead) match {
+            case None         => head +: tail
+            case Some(joined) => joinInitial(joined, tailTail)
+          }
+      }
 
-  def diff(left: Schedule, right: Schedule): Schedule =
-    (left.intervals, right.intervals) match {
-      case (Nil, _)                        => Never
-      case (_, Nil)                        => left
-      case (leftHead :: _, rightHead :: _) =>
-        if (!leftHead.overlaps(rightHead))
-          if (leftHead.end <= rightHead.start)
-            // no overlap and leftHead is before rightHead => leftHead won't be touched again by any rightHead, add it to result
-            unsafe(leftHead +: diff(left.tail, right).intervals)
+    @tailrec
+    def go(
+      left:  List[Interval],
+      right: List[Interval],
+      accum: List[Interval]
+    ): List[Interval] =
+      (left, right) match {
+        case (Nil, _)                        => right.reverse ++ accum
+        case (_, Nil)                        => left.reverse ++ accum
+        case (leftHead :: _, rightHead :: _) =>
+          leftHead.join(rightHead) match {
+            case None         => // Heads can't be joined: they don't abut or overlap
+              if (leftHead.start < rightHead.start)
+                go(left.tail, right, leftHead :: accum)
+              else
+                go(left, right.tail, rightHead :: accum)
+            case Some(joined) =>
+              // The new Interval could overlap with other Intervals on the left Schedule, so we
+              // combine it with the rest of the left list before proceeding.
+              go(joinInitial(joined, left.tail), right.tail, accum)
+          }
+      }
+
+    unsafe(go(s1.intervals, s2.intervals, List.empty).reverse)
+  }
+
+  private def intersection(s1: Schedule, s2: Schedule): Schedule = {
+
+    @tailrec
+    def go(
+      left:  List[Interval],
+      right: List[Interval],
+      accum: List[Interval]
+    ): List[Interval] =
+      (left, right) match {
+        case (Nil, _)                        => accum
+        case (_, Nil)                        => accum
+        case (leftHead :: _, rightHead :: _) =>
+          leftHead.intersection(rightHead) match {
+            case None              => // Heads can't be joined: they don't about or overlap
+              if (leftHead.end > rightHead.end)
+                go(left, right.tail, accum)
+              else
+                go(left.tail, right, accum)
+            case Some(intersected) =>
+              if (leftHead.end > rightHead.end)
+                go(left, right.tail, intersected :: accum)
+              else
+                go(left.tail, right, intersected :: accum)
+          }
+      }
+
+    unsafe(go(s1.intervals, s2.intervals, List.empty).reverse)
+  }
+
+  private def diff(s1: Schedule, s2: Schedule): Schedule = {
+    @tailrec
+    def go(left: List[Interval], right: List[Interval], accum: List[Interval]): List[Interval] =
+      (left, right) match {
+        case (Nil, _)                        => accum
+        case (_, Nil)                        => left.reverse ++ accum
+        case (leftHead :: _, rightHead :: _) =>
+          if (!leftHead.overlaps(rightHead))
+            if (leftHead.end <= rightHead.start)
+              // no overlap and leftHead is before rightHead => leftHead won't be touched again by any rightHead, add it to result
+              go(left.tail, right, leftHead :: accum)
+            else
+              // no overlap and leftHead is after rightHead => we can skip rightHead
+              go(left, right.tail, accum)
           else
-            // no overlap and leftHead is after rightHead => we can skip rightHead
-            diff(left, right.tail)
-        else
-          // overlap: replace leftHead with leftHead.diff(rightHead) and continue
-          diff(unsafe(leftHead.diff(rightHead) ++ left.tail.intervals), right)
-    }
+            // overlap: replace leftHead with leftHead.diff(rightHead) and continue
+            go(leftHead.diff(rightHead) ++ left.tail, right, accum)
+      }
+
+    unsafe(go(s1.intervals, s2.intervals, List.empty).reverse)
+  }
 
   /** @group Typeclass Instances */
   implicit val ScheduleShow: Show[Schedule] =
@@ -249,8 +245,6 @@ trait ScheduleOptics { self: Schedule.type =>
   val intervals: Getter[Schedule, List[Interval]] =
     Getter(_.intervals)
 
-// SplitEpi from any list of intervals and normalize?
-
   /** @group Optics */
   val fromDisjointSortedIntervals: Prism[List[Interval], Schedule] =
     Prism { intervals: List[Interval] =>
@@ -268,7 +262,7 @@ trait ScheduleOptics { self: Schedule.type =>
   /** @group Optics */
   val fromIntervals: SplitEpi[List[Interval], Schedule] =
     SplitEpi[List[Interval], Schedule](
-      _.foldLeft(Schedule.Never)((s, i) => s.union(Schedule.single(i))),
+      _.foldLeft(Schedule.Never)((s, i) => s.union(i)),
       _.intervals
     )
 }

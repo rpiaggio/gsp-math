@@ -13,6 +13,7 @@ import monocle.law.discipline.PrismTests
 import io.chrisdavenport.cats.time._
 import gsp.math.laws.discipline.FormatTests
 import monocle.law.discipline.IsoTests
+import cats.kernel.laws.discipline.OrderTests
 
 final class IntervalSpec extends CatsSuite {
   import ArbInterval._
@@ -32,7 +33,7 @@ final class IntervalSpec extends CatsSuite {
 
   // Laws
   checkAll("Eq", EqTests[Interval].eqv)
-  // Order or PartialOrder?
+  checkAll("Order", OrderTests[Interval].order)
 
   // Optics
   checkAll("fromOrderedInstants", PrismTests(Interval.fromOrderedInstants))

@@ -13,6 +13,9 @@ import io.chrisdavenport.cats.time._
 import monocle.Prism
 import gsp.math.optics.Format
 import monocle.Iso
+import cats.kernel.Order
+import java.time.ZoneId
+import java.time.LocalTime
 
 /**
   * Representation of an interval between two points in time, including the start time and excluding the end time
@@ -20,9 +23,11 @@ import monocle.Iso
   * can not represent a single point in time (i.e. start == end) because such an interval could not contain any
   * time t for which t >= start && t < end.
   */
-sealed abstract case class Interval protected (start: Instant, end: Instant)
-    extends Ordered[Interval] {
+sealed abstract case class Interval protected (start: Instant, end: Instant) {
   require(start.isBefore(end), "start of interval must be < end")
+
+  /** The duration of this interval. */
+  lazy val duration: Duration = Duration.between(start, end)
 
   /** True if this interval covers time t. */
   def contains(i: Instant): Boolean = i >= start && i < end
@@ -37,9 +42,6 @@ sealed abstract case class Interval protected (start: Instant, end: Instant)
   /** True if this and the other interval overlap each other either fully or partially. */
   def overlaps(other: Interval): Boolean =
     start < other.end && end > other.start
-
-  /** The duration of this interval. */
-  def duration: Duration = Duration.between(start, end)
 
   /** Adds an interval to this interval. This operation is only defined if the two intervals overlap
     * or abut each, i.e. in all cases where adding the two intervals results in one single interval.
@@ -71,15 +73,16 @@ sealed abstract case class Interval protected (start: Instant, end: Instant)
   def diff(other: Schedule): Schedule =
     Schedule.single(this).diff(other)
 
-  /** Compares to intervals and orders them by their start time. */
-  def compare(that: Interval): Int =
-    start.compareTo(that.start)
-
-  /** Gets duration of interval as hours. */
-  // def asHours: Double = duration.toNanos.toDouble / Duration.ofHours(1).toNanos
-
-  /** Gets duration of interval as days. */
-  // def asDays: Double = duration.toNanos.toDouble / Duration.ofDays(1).toNanos
+  def toFullDays(zone: ZoneId, startOfDay: LocalTime): Interval = {
+    val startAtZone = start.atZone(zone)
+    val newStart    = startAtZone.`with`(startOfDay)
+    val endAtZone   = end.atZone(zone)
+    val newEnd      = endAtZone.`with`(startOfDay)
+    Interval.unsafe(
+      if (newStart <= startAtZone) newStart.toInstant else newStart.minusDays(1).toInstant,
+      if (newEnd >= endAtZone) newStart.toInstant else newStart.plusDays(1).toInstant
+    )
+  }
 }
 
 object Interval extends IntervalOptics {
@@ -135,6 +138,10 @@ object Interval extends IntervalOptics {
   /** @group Typeclass Instances */
   implicit val IntervalEqual: Eq[Interval] =
     Eq.fromUniversalEquals
+
+  /** @group Typeclass Instances */
+  implicit val IntervalOrder: Order[Interval] =
+    Order.by(i => (i.start, i.end))
 }
 
 trait IntervalOptics { self: Interval.type =>
