@@ -31,9 +31,8 @@ final class ScheduleSpec extends CatsSuite {
 
   // Laws
   checkAll("Eq", EqTests[Schedule].eqv)
-  checkAll("Monoid", MonoidTests[Schedule].monoid)
-  // Define Order or PartialOrder
-  // Monoid for intersection?
+  checkAll("Monoid (Union)", MonoidTests[Schedule](Schedule.UnionMonoid).monoid)
+  checkAll("Monoid (Intersection)", MonoidTests[Schedule](Schedule.IntersectionMonoid).monoid)
 
   // Optics
   checkAll("fromDisjointSortedIntervals", PrismTests(Schedule.fromDisjointSortedIntervals))

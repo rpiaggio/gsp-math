@@ -94,43 +94,6 @@ object Interval extends IntervalOptics {
   def unsafe(start: Instant, end: Instant): Interval =
     apply(start, end).get
 
-  /**
-    * Takes a sequence of intervals and transforms it into a sequence of full days (i.e. 14:00 first day to 14:00
-    * on the next day) that covers all given intervals. Abutting full days are combined so that the resulting
-    * sequence contains the minimal number of intervals needed to cover the original sequence.
-    * @param intervals
-    * @param localTime
-    * @return
-    */
-  // def allDay(intervals: Seq[Interval], localTime: TimeZone): Seq[Interval] = {
-  //   // blow intervals up to cover 24hrs (or multiples thereof); days start/end at 14hrs local time
-  //   def blowUp(interval: Interval): Interval =
-  //     Interval(
-  //       TimeUtils.startOfDay(interval.start, localTime),
-  //       TimeUtils.endOfDay(interval.end, localTime)
-  //     )
-
-  //   // note that a single interval can stretch several days (e.g. for time windows)
-  //   def removeDuplicates(res: Seq[Interval], intervals: Seq[Interval]): Seq[Interval] = {
-  //     intervals match {
-  //       case Nil => res
-  //       case head::Nil =>
-  //         res :+ head
-  //       case head::tail =>
-  //         val h = head
-  //         val t = tail.head
-  //         if (h.abuts(t) || h.overlaps(t)) {
-  //           removeDuplicates(res, h.plus(t) +: tail.drop(1))
-  //         } else {
-  //           removeDuplicates(res :+ h, tail)
-  //         }
-  //     }
-  //   }
-
-  //   removeDuplicates(Seq(), intervals.map(blowUp))
-
-  // }
-
   /** @group Typeclass Instances */
   implicit val IntervalShow: Show[Interval] =
     Show.fromToString

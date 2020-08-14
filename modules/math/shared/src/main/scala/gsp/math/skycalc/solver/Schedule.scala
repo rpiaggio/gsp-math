@@ -131,6 +131,7 @@ object Schedule extends ScheduleOptics {
   def unsafe(start:     Instant, end: Instant): Schedule =
     apply(start, end).get
 
+  /** Helpers. In recursions, reversed accumulators are used to avoid incurring in quadratic costs. */
   private def union(s1: Schedule, s2: Schedule): Schedule = {
 
     @tailrec
@@ -232,10 +233,17 @@ object Schedule extends ScheduleOptics {
   implicit val ScheduleEqual: Eq[Schedule] = Eq.fromUniversalEquals
 
   /** @group Typeclass Instances */
-  implicit object ScheduleMonoid extends Monoid[Schedule] {
+  object UnionMonoid extends Monoid[Schedule] {
     def empty: Schedule = Schedule.Never
 
     def combine(x: Schedule, y: Schedule): Schedule = x.union(y)
+  }
+
+  /** @group Typeclass Instances */
+  object IntersectionMonoid extends cats.Monoid[Schedule] {
+    def empty: Schedule = Schedule.Always
+
+    def combine(x: Schedule, y: Schedule): Schedule = x.intersection(y)
   }
 }
 
