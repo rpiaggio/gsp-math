@@ -23,6 +23,9 @@ trait ArbInterval {
         Interval.unsafe(ab(0), ab(1))
       }
     )
+
+  implicit val cogenInterval: Cogen[Interval] =
+    Cogen[(Instant, Instant)].contramap(i => (i.start, i.end))
 }
 
 object ArbInterval extends ArbInterval

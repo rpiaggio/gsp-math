@@ -11,6 +11,8 @@ import monocle.Getter
 import java.time.Instant
 import io.chrisdavenport.cats.time._
 import monocle.Prism
+import gsp.math.optics.Format
+import monocle.Iso
 
 /**
   * Representation of an interval between two points in time, including the start time and excluding the end time
@@ -84,7 +86,7 @@ object Interval extends IntervalOptics {
   val Always: Interval = unsafe(Instant.MIN, Instant.MAX)
 
   def apply(start: Instant, end: Instant): Option[Interval] =
-    fromInstants.getOption((start, end))
+    fromOrderedInstants.getOption((start, end))
 
   def unsafe(start: Instant, end: Instant): Interval =
     apply(start, end).get
@@ -145,13 +147,33 @@ trait IntervalOptics { self: Interval.type =>
   val end: Getter[Interval, Instant] =
     Getter(_.end)
 
+  /** @group Optics */
   val duration: Getter[Interval, Duration] =
     Getter(_.duration)
 
   /** @group Optics */
-  val fromInstants: Prism[(Instant, Instant), Interval] =
+  val fromOrderedInstants: Prism[(Instant, Instant), Interval] =
     Prism[(Instant, Instant), Interval] {
       case (start: Instant, end: Instant) =>
         if (start < end) (new Interval(start, end) {}).some else none
     }(i => (i.start, i.end))
+
+  /** @group Optics */
+  val fromInstants: Format[(Instant, Instant), Interval] =
+    Format[(Instant, Instant), Interval](
+      {
+        case (start: Instant, end: Instant) =>
+          if (start < end) (new Interval(start, end) {}).some
+          else if (start > end) (new Interval(end, start) {}).some
+          else none
+      },
+      i => (i.start, i.end)
+    )
+
+  /** @group Optics */
+  val startDuration: Iso[(Instant, Duration), Interval] =
+    Iso[(Instant, Duration), Interval] {
+      case (start, duration) => new Interval(start, start.plus(duration)) {}
+    }(i => (i.start, i.duration))
+
 }

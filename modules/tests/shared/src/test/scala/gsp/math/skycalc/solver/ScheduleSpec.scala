@@ -9,9 +9,13 @@ import cats.Eq
 import cats.Show
 import cats.kernel.laws.discipline.MonoidTests
 import gsp.math.arb._
+import cats.kernel.laws.discipline.EqTests
+import gsp.math.laws.discipline.SplitEpiTests
+import monocle.law.discipline.PrismTests
 
 final class ScheduleSpec extends CatsSuite {
   import ArbSchedule._
+  import ArbInterval._
 
   test("Equality must be natural") {
     forAll { (a: Schedule, b: Schedule) =>
@@ -25,35 +29,43 @@ final class ScheduleSpec extends CatsSuite {
     }
   }
 
+  // Laws
+  checkAll("Eq", EqTests[Schedule].eqv)
   checkAll("Monoid", MonoidTests[Schedule].monoid)
+  // Define Order or PartialOrder
+  // Monoid for intersection?
 
-  test("AddAfter") {
+  // Optics
+  checkAll("fromDisjointSortedIntervals", PrismTests(Schedule.fromDisjointSortedIntervals))
+  checkAll("fromIntervals", SplitEpiTests(Schedule.fromIntervals).splitEpi)
+
+  test("Extend") {
     val s1 = Schedule.single(interval(1, 2))
     val s2 = Schedule.single(interval(2, 5))
     val s3 = Schedule.single(interval(8, 9))
 
-    assert(Schedule.single(interval(1, 5)).some === s1.addAfter(s2))
+    assert(Schedule.single(interval(1, 5)).some === s1.extend(s2))
     assert(
-      Schedule(List(interval(1, 5), interval(8, 9))) === s1.addAfter(s2).flatMap(_.addAfter(s3))
+      Schedule(List(interval(1, 5), interval(8, 9))) === s1.extend(s2).flatMap(_.extend(s3))
     )
   }
 
-  test("Combine") {
+  test("Union") {
     val s1Opt  = Schedule(List(interval(1, 2), interval(5, 9)))
     val s2Opt  = Schedule(List(interval(2, 3), interval(4, 8), interval(11, 14)))
     val result = Schedule(List(interval(1, 3), interval(4, 9), interval(11, 14)))
 
-    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s1.combine(s2))))
-    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s2.combine(s1))))
+    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s1.union(s2))))
+    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s2.union(s1))))
   }
 
-  test("Intersect") {
+  test("Intersection") {
     val s1Opt  = Schedule(List(interval(1, 2), interval(5, 9)))
     val s2Opt  = Schedule(List(interval(2, 3), interval(4, 8), interval(11, 14)))
     val result = Schedule.single(interval(5, 8)).some
 
-    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s1.intersect(s2))))
-    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s2.intersect(s1))))
+    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s1.intersection(s2))))
+    assert(result === s1Opt.flatMap(s1 => s2Opt.map(s2 => s2.intersection(s1))))
   }
 
   test("Simple Diff") {

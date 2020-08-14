@@ -13,7 +13,7 @@ import java.time.Instant
 trait ArbSchedule {
   import ArbTime._
 
-  implicit val arbSolution: Arbitrary[Schedule] =
+  implicit val arbSchedule: Arbitrary[Schedule] =
     Arbitrary {
       arbitrary[List[Instant]]
         .suchThat(list => list.length === list.distinct.length) // No duplicates
@@ -28,6 +28,9 @@ trait ArbSchedule {
           )
         }
     }
+
+  implicit val cogenSchedule: Cogen[Schedule] =
+    Cogen[List[Instant]].contramap(_.intervals.flatMap(i => List(i.start, i.end)))
 }
 
 object ArbSchedule extends ArbSchedule

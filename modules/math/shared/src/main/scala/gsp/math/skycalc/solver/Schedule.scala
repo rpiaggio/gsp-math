@@ -12,6 +12,7 @@ import java.time.Duration
 import io.chrisdavenport.cats.time._
 import monocle.Getter
 import monocle.Prism
+import gsp.math.optics.SplitEpi
 
 /**
   * An arbitrary number of Intervals.
@@ -40,7 +41,7 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
     * @param other
     * @return
     */
-  def addAfter(other: Schedule): Option[Schedule] =
+  def extend(other: Schedule): Option[Schedule] =
     //This will be true if one of the lists is empty or if the condition holds
     if (latest.zip(other.earliest).forall { case (leftEnd, rightStart) => leftEnd < rightStart })
       Schedule(intervals ++ other.intervals)
@@ -58,8 +59,8 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
     * @param interval
     * @return
     */
-  def addAfter(interval: Interval): Option[Schedule] =
-    addAfter(Schedule.single(interval))
+  def extend(interval: Interval): Option[Schedule] =
+    extend(Schedule.single(interval))
 
   /**
     * True if any part of this Schedule overlaps with the given interval.
@@ -115,13 +116,13 @@ sealed abstract case class Schedule protected (intervals: List[Interval]) {
     * Combines two Schedules.
     * Merges all overlapping and abutting intervals.
     */
-  def combine(other: Schedule): Schedule = Schedule.combine(this, other)
+  def union(other: Schedule): Schedule = Schedule.union(this, other)
 
   /**
     * Intersects a Schedule with another one.
     * The result will contain all intervals of this Schedule which are covered by both Schedules.
     */
-  def intersect(other: Schedule): Schedule = Schedule.intersect(this, other)
+  def intersection(other: Schedule): Schedule = Schedule.intersection(this, other)
 
   /**
     * Remove from this Schedule intersections with another one.
@@ -164,14 +165,14 @@ object Schedule extends ScheduleOptics {
   def apply(start:     Instant, end: Instant): Option[Schedule] =
     Interval(start, end).map(single)
   def apply(intervals: List[Interval]): Option[Schedule] =
-    fromIntervals.getOption(intervals)
+    fromDisjointSortedIntervals.getOption(intervals)
 
   def unsafe(intervals: List[Interval]): Schedule =
     apply(intervals).get
   def unsafe(start:     Instant, end: Instant): Schedule =
     apply(start, end).get
 
-  def combine(left: Schedule, right: Schedule): Schedule =
+  def union(left: Schedule, right: Schedule): Schedule =
     (left.intervals, right.intervals) match {
       case (Nil, _)                        => right
       case (_, Nil)                        => left
@@ -180,17 +181,17 @@ object Schedule extends ScheduleOptics {
           .join(rightHead)
           .fold( // Heads can't be joined: they don't about or overlap
             if (leftHead.start < rightHead.start)
-              unsafe(leftHead +: combine(left.tail, right).intervals)
+              unsafe(leftHead +: union(left.tail, right).intervals)
             else
-              unsafe(rightHead +: combine(left, right.tail).intervals)
+              unsafe(rightHead +: union(left, right.tail).intervals)
           )(joined =>
             // The new Interval could overlap with other Intervals on the left Schedule, so we
             // perform a combine with the rest of the left before proceeding.
-            combine(combine(single(joined), left.tail), right.tail)
+            union(union(single(joined), left.tail), right.tail)
           )
     }
 
-  def intersect(left: Schedule, right: Schedule): Schedule =
+  def intersection(left: Schedule, right: Schedule): Schedule =
     (left.intervals, right.intervals) match {
       case (Nil, _)                        => Never
       case (_, Nil)                        => Never
@@ -199,14 +200,14 @@ object Schedule extends ScheduleOptics {
           .intersection(rightHead)
           .fold( // Heads can't be joined: they don't about or overlap
             if (leftHead.end > rightHead.end)
-              intersect(left, unsafe(right.intervals.tail))
+              intersection(left, unsafe(right.intervals.tail))
             else
-              intersect(left.tail, right)
-          )(intersection =>
+              intersection(left.tail, right)
+          )(intersected =>
             if (leftHead.end > rightHead.end)
-              unsafe(intersection +: intersect(left, right.tail).intervals)
+              unsafe(intersected +: intersection(left, right.tail).intervals)
             else
-              unsafe(intersection +: intersect(left.tail, right).intervals)
+              unsafe(intersected +: intersection(left.tail, right).intervals)
           )
     }
 
@@ -238,7 +239,7 @@ object Schedule extends ScheduleOptics {
   implicit object ScheduleMonoid extends Monoid[Schedule] {
     def empty: Schedule = Schedule.Never
 
-    def combine(x: Schedule, y: Schedule): Schedule = x.combine(y)
+    def combine(x: Schedule, y: Schedule): Schedule = x.union(y)
   }
 }
 
@@ -248,8 +249,10 @@ trait ScheduleOptics { self: Schedule.type =>
   val intervals: Getter[Schedule, List[Interval]] =
     Getter(_.intervals)
 
+// SplitEpi from any list of intervals and normalize?
+
   /** @group Optics */
-  val fromIntervals: Prism[List[Interval], Schedule] =
+  val fromDisjointSortedIntervals: Prism[List[Interval], Schedule] =
     Prism { intervals: List[Interval] =>
       if (
         intervals.sliding(2).forall {
@@ -261,4 +264,11 @@ trait ScheduleOptics { self: Schedule.type =>
       else
         none
     }(_.intervals)
+
+  /** @group Optics */
+  val fromIntervals: SplitEpi[List[Interval], Schedule] =
+    SplitEpi[List[Interval], Schedule](
+      _.foldLeft(Schedule.Never)((s, i) => s.union(Schedule.single(i))),
+      _.intervals
+    )
 }

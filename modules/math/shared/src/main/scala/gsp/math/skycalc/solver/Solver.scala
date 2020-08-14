@@ -36,13 +36,13 @@ case class DefaultSolver[A](step: Duration = Duration.ofSeconds(30)) extends Sol
     def solve(curStart: Instant, curState: Boolean, i: Instant, accum: Schedule): Schedule =
       if (i >= interval.end)
         if (curState)
-          accum.addAfter(Interval.unsafe(curStart, interval.end)).get
+          accum.extend(Interval.unsafe(curStart, interval.end)).get
         else
           accum
       else if (constraint.metAt(i, calc)(getter) == curState)
         solve(curStart, curState, i.plus(step), accum)
       else if (curState)
-        solve(i, curState = false, i.plus(step), accum.addAfter(Interval.unsafe(curStart, i)).get)
+        solve(i, curState = false, i.plus(step), accum.extend(Interval.unsafe(curStart, i)).get)
       else
         solve(i, curState = true, i.plus(step), accum)
 
@@ -70,14 +70,14 @@ case class ParabolaSolver[A](tolerance: Duration = Duration.ofSeconds(30)) exten
       val fm = constraint.metAt(m, calc)
       if (Interval.unsafe(s, e).duration > tolerance)
         (fs, fm, fe) match {
-          case (false, false, false) => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
+          case (false, false, false) => solve(s, fs, m, fm).extend(solve(m, fm, e, fe)).get
           case (false, false, true)  => solve(m, fm, e, fe)
-          case (false, true, false)  => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
-          case (false, true, true)   => solve(s, fs, m, fm).addAfter(Schedule.unsafe(m, e)).get
+          case (false, true, false)  => solve(s, fs, m, fm).extend(solve(m, fm, e, fe)).get
+          case (false, true, true)   => solve(s, fs, m, fm).extend(Schedule.unsafe(m, e)).get
           case (true, false, false)  => solve(s, fs, m, fm)
-          case (true, false, true)   => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
-          case (true, true, false)   => Schedule.unsafe(s, m).addAfter(solve(m, fm, e, fe)).get
-          case (true, true, true)    => solve(s, fs, m, fm).addAfter(solve(m, fm, e, fe)).get
+          case (true, false, true)   => solve(s, fs, m, fm).extend(solve(m, fm, e, fe)).get
+          case (true, true, false)   => Schedule.unsafe(s, m).extend(solve(m, fm, e, fe)).get
+          case (true, true, true)    => solve(s, fs, m, fm).extend(solve(m, fm, e, fe)).get
         }
       else if (fm)
         Schedule.single(Interval.unsafe(s, e))

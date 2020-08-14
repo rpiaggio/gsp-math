@@ -8,9 +8,15 @@ import cats.tests.CatsSuite
 import cats.Eq
 import cats.Show
 import gsp.math.arb._
+import cats.kernel.laws.discipline.EqTests
+import monocle.law.discipline.PrismTests
+import io.chrisdavenport.cats.time._
+import gsp.math.laws.discipline.FormatTests
+import monocle.law.discipline.IsoTests
 
 final class IntervalSpec extends CatsSuite {
   import ArbInterval._
+  import ArbTime._
 
   test("Equality must be natural") {
     forAll { (a: Interval, b: Interval) =>
@@ -23,6 +29,15 @@ final class IntervalSpec extends CatsSuite {
       a.toString shouldEqual Show[Interval].show(a)
     }
   }
+
+  // Laws
+  checkAll("Eq", EqTests[Interval].eqv)
+  // Order or PartialOrder?
+
+  // Optics
+  checkAll("fromOrderedInstants", PrismTests(Interval.fromOrderedInstants))
+  checkAll("fromInstants", FormatTests(Interval.fromInstants).format)
+  checkAll("startDuration", IsoTests(Interval.startDuration))
 
   test("Intersection") {
     val i1 = interval(5, 10)
