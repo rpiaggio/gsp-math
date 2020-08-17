@@ -5,6 +5,7 @@ package gsp.math.skycalc
 
 import gsp.math.JulianDate
 import java.time.ZoneId
+import java.time.Duration
 
 object Constants {
   // some (not all) physical, mathematical, and astronomical constants used are defined here.
@@ -33,6 +34,6 @@ object Constants {
   val EarthDiff =
     0.05 // used in numerical differentiation to find earth velocity
 
-  val UT: ZoneId             = ZoneId.of("UT")
-  val NanosPerSecond: Double = 1e9
+  val UT: ZoneId           = ZoneId.of("UT")
+  val NanosPerSecond: Long = Duration.ofSeconds(1).toNanos
 }

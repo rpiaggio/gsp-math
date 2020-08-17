@@ -13,6 +13,9 @@ import monocle.law.discipline.PrismTests
 import gsp.math.laws.discipline.FormatTests
 import gsp.math.arb._
 import io.chrisdavenport.cats.time._
+import java.time.Instant
+import org.scalacheck.Gen
+import org.scalacheck.Arbitrary._
 
 final class IntervalSpec extends CatsSuite {
   import ArbInterval._
@@ -39,19 +42,184 @@ final class IntervalSpec extends CatsSuite {
   checkAll("fromInstants", FormatTests(Interval.fromInstants).format)
   checkAll("fromStartDuration", PrismTests(Interval.fromStartDuration))
 
-// Test contains x 2, abuts, overlaps, join, (empty) intersection, diff x 2, toFullDays
+// Test:  diff x 2, toFullDays
+  test("Contains Instant") {
+    forAll { i: Interval =>
+      forAll(instantInInterval(i)) { inst: Instant =>
+        assert(i.contains(inst))
+      }
+    }
+  }
+
+  test("Not Contains Instant") {
+    forAll { i: Interval =>
+      forAll(instantOutsideInterval(i)) { inst: Instant =>
+        assert(!i.contains(inst))
+      }
+    }
+  }
+
+  test("Contains Interval") {
+    forAll { i: Interval =>
+      forAll(
+        Gen
+          .zip(instantInInterval(i, includeEnd = true), instantInInterval(i, includeEnd = true))
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(i.contains(Interval.fromInstants.getOption(instants).get))
+      }
+    }
+  }
+
+  test("Not Contains Interval") {
+    forAll { i: Interval =>
+      forAll(
+        Gen // At least one instant not in Interval
+          .zip(arbitrary[Instant], instantOutsideInterval(i).suchThat(_ > i.end))
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(!i.contains(Interval.fromInstants.getOption(instants).get))
+      }
+    }
+  }
+
+  test("Abuts") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        Gen.oneOf(
+          instantInInterval(before).map(s => Interval.unsafe(s, i.start)),
+          instantInInterval(after, includeEnd = true)
+            .suchThat(_ > i.end)
+            .map(e => Interval.unsafe(i.end, e))
+        )
+      ) { i2: Interval =>
+        assert(i.abuts(i2))
+      }
+    }
+  }
+
+  test("Not Abuts") {
+    forAll { i: Interval =>
+      forAll(
+        arbitrary[Interval]
+          .suchThat(i2 => catsSyntaxEq(i2.end) =!= i.start)
+          .suchThat(i2 => catsSyntaxEq(i2.start) =!= i.end)
+      ) { i2: Interval =>
+        assert(!i.abuts(i2))
+      }
+    }
+  }
+
+  test("Overlaps") {
+    forAll { i: Interval =>
+      for {
+        untilEnd  <- Interval(Instant.MIN, i.end)
+        fromStart <- Interval(i.start, Instant.MAX)
+      } yield forAll(
+        Gen
+          .zip(instantInInterval(untilEnd), instantInInterval(fromStart).suchThat(_ > i.start))
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(i.overlaps(Interval.fromInstants.getOption(instants).get))
+      }
+    }
+  }
+
+  test("Not Overlaps") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        Gen
+          .oneOf(
+            Gen.zip(instantInInterval(before), instantInInterval(before)),
+            Gen.zip(instantInInterval(after), instantInInterval(after))
+          )
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(!i.overlaps(Interval.fromInstants.getOption(instants).get))
+      }
+    }
+  }
+
+  test("Join") {
+    forAll { i: Interval =>
+      for {
+        untilEnd  <- Interval(Instant.MIN, i.end)
+        fromStart <- Interval(i.start, Instant.MAX)
+      } yield forAll(
+        Gen
+          .zip(instantInInterval(untilEnd), instantInInterval(fromStart))
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        val other = Interval.fromInstants.getOption(instants).get
+        val join  = i.join(other)
+        assert(join.map(_.start) === List(i.start, other.start).min.some)
+        assert(join.map(_.end) === List(i.end, other.end).max.some)
+      }
+    }
+  }
+
+  test("Empty Join") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        Gen
+          .oneOf(
+            Gen.zip(instantInInterval(before), instantInInterval(before)),
+            Gen.zip(instantInInterval(after).suchThat(_ > i.end),
+                    instantInInterval(after).suchThat(_ > i.end)
+            )
+          )
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(i.join(Interval.fromInstants.getOption(instants).get).isEmpty)
+      }
+    }
+  }
 
   test("Intersection") {
-    val i1 = interval(5, 10)
-    val i2 = interval(2, 6)
-    val i3 = interval(6, 9)
-    val i4 = interval(8, 12)
+    forAll { i: Interval =>
+      for {
+        untilEnd  <- Interval(Instant.MIN, i.end)
+        fromStart <- Interval(i.start, Instant.MAX)
+      } yield forAll(
+        Gen
+          .zip(instantInInterval(untilEnd), instantInInterval(fromStart).suchThat(_ > i.start))
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        val other = Interval.fromInstants.getOption(instants).get
+        val join  = i.intersection(other)
+        assert(join.map(_.start) === List(i.start, other.start).max.some)
+        assert(join.map(_.end) === List(i.end, other.end).min.some)
+      }
+    }
+  }
 
-    assert(i1.intersection(i2) === interval(5, 6).some)
-    assert(i1.intersection(i3) === i3.some)
-    assert(i3.intersection(i1) === i3.some)
-    assert(i1.intersection(i4) === interval(8, 10).some)
-    assert(i2.intersection(i3) === none)
+  test("Empty Intersection") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        Gen
+          .oneOf(
+            Gen.zip(instantInInterval(before), instantInInterval(before)),
+            Gen.zip(instantInInterval(after).suchThat(_ > i.end),
+                    instantInInterval(after).suchThat(_ > i.end)
+            )
+          )
+          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      ) { instants =>
+        assert(i.intersection(Interval.fromInstants.getOption(instants).get).isEmpty)
+      }
+    }
   }
 
   // check some common and some corner cases..

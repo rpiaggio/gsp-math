@@ -862,7 +862,7 @@ trait ImprovedSkyCalcMethods {
     jdint = jdint + inter + date.getDayOfMonth + jdzpt
     jd = jdint.toDouble
     jdfrac =
-      date.getHour / 24.0 + date.getMinute / 1440.0 + (date.getSecond + date.getNano / NanosPerSecond) / SecsInDay
+      date.getHour / 24.0 + date.getMinute / 1440.0 + (date.getSecond + date.getNano.toDouble / NanosPerSecond) / SecsInDay
     if (jdfrac < 0.5) {
       jdint -= 1
       jdfrac = jdfrac + 0.5
