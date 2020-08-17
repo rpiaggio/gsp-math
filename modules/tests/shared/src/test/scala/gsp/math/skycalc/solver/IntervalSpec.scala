@@ -16,6 +16,9 @@ import io.chrisdavenport.cats.time._
 import java.time.Instant
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary._
+import java.time.ZoneId
+import java.time.LocalTime
+import java.time.Duration
 
 final class IntervalSpec extends CatsSuite {
   import ArbInterval._
@@ -53,8 +56,8 @@ final class IntervalSpec extends CatsSuite {
 
   test("Not Contains Instant") {
     forAll { i: Interval =>
-      forAll(instantOutsideInterval(i)) { inst: Instant =>
-        assert(!i.contains(inst))
+      forAll(instantOutsideInterval(i)) { instOpt =>
+        assert(instOpt.forall(inst => !i.contains(inst)))
       }
     }
   }
@@ -62,11 +65,11 @@ final class IntervalSpec extends CatsSuite {
   test("Contains Interval") {
     forAll { i: Interval =>
       forAll(
-        Gen
-          .zip(instantInInterval(i, includeEnd = true), instantInInterval(i, includeEnd = true))
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+        distinctZip(instantInInterval(i, includeEnd = true),
+                    instantInInterval(i, includeEnd = true)
+        )
       ) { instants =>
-        assert(i.contains(Interval.fromInstants.getOption(instants).get))
+        assert(Interval.fromInstants.getOption(instants).exists(i.contains))
       }
     }
   }
@@ -74,11 +77,17 @@ final class IntervalSpec extends CatsSuite {
   test("Not Contains Interval") {
     forAll { i: Interval =>
       forAll(
-        Gen // At least one instant not in Interval
-          .zip(arbitrary[Instant], instantOutsideInterval(i).suchThat(_ > i.end))
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+        // At least one instant not in Interval
+        distinctZip(Gen.some(instantWithSpecialInterval(i)),
+                    instantOutsideInterval(i, includeEnd = false)
+        )
       ) { instants =>
-        assert(!i.contains(Interval.fromInstants.getOption(instants).get))
+        assert(
+          instants
+            .mapN(Function.untupled(Interval.fromInstants.getOption))
+            .flatten
+            .forall(other => !i.contains(other))
+        )
       }
     }
   }
@@ -115,15 +124,11 @@ final class IntervalSpec extends CatsSuite {
 
   test("Overlaps") {
     forAll { i: Interval =>
-      for {
-        untilEnd  <- Interval(Instant.MIN, i.end)
-        fromStart <- Interval(i.start, Instant.MAX)
-      } yield forAll(
-        Gen
-          .zip(instantInInterval(untilEnd), instantInInterval(fromStart).suchThat(_ > i.start))
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      forAll(
+        // At least one end within Interval i
+        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeStart = false))
       ) { instants =>
-        assert(i.overlaps(Interval.fromInstants.getOption(instants).get))
+        assert(Interval.fromInstants.getOption(instants).exists(i.overlaps))
       }
     }
   }
@@ -136,30 +141,26 @@ final class IntervalSpec extends CatsSuite {
       } yield forAll(
         Gen
           .oneOf(
-            Gen.zip(instantInInterval(before), instantInInterval(before)),
-            Gen.zip(instantInInterval(after), instantInInterval(after))
+            distinctZip(instantInInterval(before), instantInInterval(before)),
+            distinctZip(instantInInterval(after), instantInInterval(after))
           )
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
       ) { instants =>
-        assert(!i.overlaps(Interval.fromInstants.getOption(instants).get))
+        assert(Interval.fromInstants.getOption(instants).exists(other => !i.overlaps(other)))
       }
     }
   }
 
   test("Join") {
     forAll { i: Interval =>
-      for {
-        untilEnd  <- Interval(Instant.MIN, i.end)
-        fromStart <- Interval(i.start, Instant.MAX)
-      } yield forAll(
-        Gen
-          .zip(instantInInterval(untilEnd), instantInInterval(fromStart))
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      forAll(
+        // At least one end within Interval i
+        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeEnd = true))
       ) { instants =>
-        val other = Interval.fromInstants.getOption(instants).get
-        val join  = i.join(other)
-        assert(join.map(_.start) === List(i.start, other.start).min.some)
-        assert(join.map(_.end) === List(i.end, other.end).max.some)
+        Interval.fromInstants.getOption(instants).foreach { other =>
+          val join = i.join(other)
+          assert(join.map(_.start) === List(i.start, other.start).min.some)
+          assert(join.map(_.end) === List(i.end, other.end).max.some)
+        }
       }
     }
   }
@@ -172,32 +173,28 @@ final class IntervalSpec extends CatsSuite {
       } yield forAll(
         Gen
           .oneOf(
-            Gen.zip(instantInInterval(before), instantInInterval(before)),
-            Gen.zip(instantInInterval(after).suchThat(_ > i.end),
-                    instantInInterval(after).suchThat(_ > i.end)
+            distinctZip(instantInInterval(before), instantInInterval(before)),
+            distinctZip(instantInInterval(after, includeStart = false),
+                        instantInInterval(after, includeStart = false)
             )
           )
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
       ) { instants =>
-        assert(i.join(Interval.fromInstants.getOption(instants).get).isEmpty)
+        assert(Interval.fromInstants.getOption(instants).exists(other => i.join(other).isEmpty))
       }
     }
   }
 
   test("Intersection") {
     forAll { i: Interval =>
-      for {
-        untilEnd  <- Interval(Instant.MIN, i.end)
-        fromStart <- Interval(i.start, Instant.MAX)
-      } yield forAll(
-        Gen
-          .zip(instantInInterval(untilEnd), instantInInterval(fromStart).suchThat(_ > i.start))
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
+      forAll(
+        // At least one end within Interval i
+        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeStart = false))
       ) { instants =>
-        val other = Interval.fromInstants.getOption(instants).get
-        val join  = i.intersection(other)
-        assert(join.map(_.start) === List(i.start, other.start).max.some)
-        assert(join.map(_.end) === List(i.end, other.end).min.some)
+        Interval.fromInstants.getOption(instants).foreach { other =>
+          val intersection = i.intersection(other)
+          assert(intersection.map(_.start) === List(i.start, other.start).max.some)
+          assert(intersection.map(_.end) === List(i.end, other.end).min.some)
+        }
       }
     }
   }
@@ -210,26 +207,56 @@ final class IntervalSpec extends CatsSuite {
       } yield forAll(
         Gen
           .oneOf(
-            Gen.zip(instantInInterval(before), instantInInterval(before)),
-            Gen.zip(instantInInterval(after).suchThat(_ > i.end),
-                    instantInInterval(after).suchThat(_ > i.end)
+            distinctZip(instantInInterval(before), instantInInterval(before)),
+            distinctZip(instantInInterval(after, includeStart = false),
+                        instantInInterval(after, includeStart = false)
             )
           )
-          .suchThat(t => catsSyntaxEq(t._1) =!= t._2)
       ) { instants =>
-        assert(i.intersection(Interval.fromInstants.getOption(instants).get).isEmpty)
+        assert(
+          Interval.fromInstants.getOption(instants).exists(other => i.intersection(other).isEmpty)
+        )
       }
     }
   }
 
-  // check some common and some corner cases..
+  // diff
+  // original includes results
+  // all results abut other (or some interval from schedule)
+  // fold joining other results in original (interleave with schedule?)
 
-  test("Diff In The Middle") {
-    assert(
-      List(interval(1000, 1200), interval(1300, 2000)) ===
-        (interval(1000, 2000).diff(interval(1200, 1300)))
-    )
+  test("Diff Interval") {
+    forAll { i: Interval =>
+      forAll(
+        // At least one end within Interval i
+        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeStart = false))
+      ) { instants =>
+        Interval.fromInstants.getOption(instants).foreach { other =>
+          val diff = i.diff(other)
+          assert(diff.nonEmpty)
+          assert(diff.forall(i.contains))
+          assert(diff.forall(other.abuts))
+          assert(
+            diff
+              .foldLeft(other.some)((a, b) => a.flatMap(_.join(b)))
+              .flatMap(_.intersection(i)) === i.some
+          )
+        }
+      }
+    }
   }
+
+  test("ToFullDays") {
+    forAll { (i: Interval, z: ZoneId, t: LocalTime) =>
+      val allDay = i.toFullDays(z, t)
+      assert(allDay.contains(i))
+      assert(allDay.start.atZone(z).toLocalTime === t)
+      assert(allDay.end.atZone(z).toLocalTime === t)
+      assert(allDay.diff(i).forall(_.duration < Duration.ofDays(1)))
+    }
+  }
+
+  // check some common and some corner cases..
 
   test("Diff By Schedule of 2") {
     assert(
@@ -247,13 +274,5 @@ final class IntervalSpec extends CatsSuite {
           )
         )
     )
-  }
-
-  test("Diff At Start") {
-    assert(List(interval(1300, 2000)) === interval(1000, 2000).diff(interval(1000, 1300)))
-  }
-
-  test("Diff At End") {
-    assert(List(interval(1000, 1700)) === interval(1000, 2000).diff(interval(1700, 2000)))
   }
 }

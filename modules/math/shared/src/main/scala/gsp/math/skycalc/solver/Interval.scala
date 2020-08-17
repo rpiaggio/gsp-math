@@ -87,7 +87,7 @@ sealed abstract case class Interval protected (start: Instant, end: Instant) {
     val newEnd      = endAtZone.`with`(startOfDay)
     Interval.unsafe(
       if (newStart <= startAtZone) newStart.toInstant else newStart.minusDays(1).toInstant,
-      if (newEnd >= endAtZone) newStart.toInstant else newStart.plusDays(1).toInstant
+      if (newEnd >= endAtZone) newEnd.toInstant else newEnd.plusDays(1).toInstant
     )
   }
 }
