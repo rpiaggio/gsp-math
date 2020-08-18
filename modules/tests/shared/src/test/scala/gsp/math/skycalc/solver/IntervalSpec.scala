@@ -125,8 +125,7 @@ final class IntervalSpec extends CatsSuite {
   test("Overlaps") {
     forAll { i: Interval =>
       forAll(
-        // At least one end within Interval i
-        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeStart = false))
+        distinctZip(untilEndOfInterval(i), fromStartOfInterval(i, includeStart = false))
       ) { instants =>
         assert(Interval.fromInstants.getOption(instants).exists(i.overlaps))
       }
@@ -153,8 +152,7 @@ final class IntervalSpec extends CatsSuite {
   test("Join") {
     forAll { i: Interval =>
       forAll(
-        // At least one end within Interval i
-        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeEnd = true))
+        distinctZip(untilEndOfInterval(i, includeEnd = true), fromStartOfInterval(i))
       ) { instants =>
         Interval.fromInstants.getOption(instants).foreach { other =>
           val join = i.join(other)
@@ -187,8 +185,7 @@ final class IntervalSpec extends CatsSuite {
   test("Intersection") {
     forAll { i: Interval =>
       forAll(
-        // At least one end within Interval i
-        distinctZip(instantWithSpecialInterval(i), instantInInterval(i, includeStart = false))
+        distinctZip(untilEndOfInterval(i), fromStartOfInterval(i, includeStart = false))
       ) { instants =>
         Interval.fromInstants.getOption(instants).foreach { other =>
           val intersection = i.intersection(other)
@@ -241,6 +238,44 @@ final class IntervalSpec extends CatsSuite {
               .foldLeft(other.some)((a, b) => a.flatMap(_.join(b)))
               .flatMap(_.intersection(i)) === i.some
           )
+        }
+      }
+    }
+  }
+
+  test("Unmodified Diff Interval") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        Gen
+          .oneOf(
+            distinctZip(instantInInterval(before, includeEnd = true),
+                        instantInInterval(before, includeEnd = true)
+            ),
+            distinctZip(instantInInterval(after), instantInInterval(after))
+          )
+      ) { instants =>
+        Interval.fromInstants.getOption(instants).foreach { other =>
+          assert(i.diff(other) === List(i))
+        }
+      }
+    }
+  }
+
+  test("Empty Diff Interval") {
+    forAll { i: Interval =>
+      for {
+        before <- Interval(Instant.MIN, i.start)
+        after  <- Interval(i.end, Instant.MAX)
+      } yield forAll(
+        distinctZip(instantInInterval(before, includeEnd = true, specials = List(i.start)),
+                    instantInInterval(after, includeEnd = true, specials = List(i.end))
+        )
+      ) { instants =>
+        Interval.fromInstants.getOption(instants).foreach { other =>
+          assert(i.diff(other).isEmpty)
         }
       }
     }

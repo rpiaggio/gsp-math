@@ -63,13 +63,19 @@ sealed abstract case class Interval protected (start: Instant, end: Instant) {
 
   /** The result of removing one interval from another, which can result in zero, one or two intervals */
   def diff(other: Interval): List[Interval] =
-    if (this.start < other.start && this.end > other.end)
-      List(Interval.unsafe(this.start, other.start), Interval.unsafe(other.end, this.end))
-    else if (this.start < other.start && this.end <= other.end)
-      List(Interval.unsafe(this.start, other.start))
-    else if (this.start >= other.start && this.end > other.end)
+    if (this.start < other.start)
+      if (other.end < this.end)
+        List(Interval.unsafe(this.start, other.start), Interval.unsafe(other.end, this.end))
+      else if (other.start <= this.end)
+        List(Interval.unsafe(this.start, other.start))
+      else
+        List(this)
+    else if (other.end <= this.start)
+      List(this)
+    else if (other.end < this.end)
       List(Interval.unsafe(other.end, this.end))
-    else List.empty
+    else
+      List.empty
 
   /** The result of removing the intervals from a Schedule from this interval */
   def diff(other: Schedule): Schedule =
