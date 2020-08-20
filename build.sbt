@@ -89,7 +89,7 @@ lazy val tests = crossProject(JVMPlatform, JSPlatform)
     name := "gsp-math-tests",
     skip in publish := true,
     libraryDependencies ++= Seq(
-      "com.disneystreaming" %%% "weaver-framework" % "0.4.3"
+      "com.disneystreaming" %%% "weaver-framework" % "0.4.3" % Test
     ),
     testFrameworks += new TestFramework("weaver.framework.TestFramework"),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -100,9 +100,9 @@ lazy val tests = crossProject(JVMPlatform, JSPlatform)
       "https://github.com/gemini-hlsw/maven-repo/raw/master/releases"
     ),
     libraryDependencies ++= Seq(
-      "edu.gemini.ocs"      %% "edu-gemini-util-skycalc"     % "2020001.1.7",
-      "com.disneystreaming" %% "weaver-scalacheck"           % "0.4.3",
-      "com.47deg"           %% "scalacheck-toolbox-datetime" % "0.3.5"
+      "edu.gemini.ocs"      %% "edu-gemini-util-skycalc"     % "2020001.1.7" % Test,
+      "com.disneystreaming" %% "weaver-scalacheck"           % "0.4.3"       % Test,
+      "com.47deg"           %% "scalacheck-toolbox-datetime" % "0.3.5"       % Test
     )
   )
   .jsSettings(gspScalaJsSettings: _*)
