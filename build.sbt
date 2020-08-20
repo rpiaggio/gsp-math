@@ -14,7 +14,7 @@ lazy val coulombVersion              = "0.5.0"
 lazy val spireVersion                = "0.17.0-RC1"
 lazy val singletonOpsVersion         = "0.5.1"
 lazy val refinedVersion              = "0.9.15"
-lazy val catsTimeVersion             = "0.3.1-SNAPSHOT"
+lazy val catsTimeVersion             = "0.3.4"
 
 inThisBuild(
   Seq(
