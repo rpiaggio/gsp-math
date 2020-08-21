@@ -10,8 +10,12 @@ import gsp.math.Declination
 import gsp.math.HourAngle
 import monocle.Getter
 
-/** Struct that holds results of SkyCalc. */
-final case class SkyCalcResults protected[skycalc](
+/**
+  * Struct that holds results of SkyCalc.
+  *
+  * Raw values are held exclusively to compare with OCS output.
+  */
+final case class SkyCalcResults protected[skycalc] (
   protected[skycalc] val altitudeRaw:         Double,
   protected[skycalc] val azimuthRaw:          Double,
   protected[skycalc] val parallacticAngleRaw: Double,
@@ -25,16 +29,20 @@ final case class SkyCalcResults protected[skycalc](
   lunarDistance:                              Double,
   protected[skycalc] val lunarElevationRaw:   Double
 ) {
-  val altitude: Declination       = Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(altitudeRaw))._1
+  val altitude: Declination       =
+    Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(altitudeRaw))._1
   val azimuth: Angle              = Angle.fromDoubleDegrees(azimuthRaw)
   val parallacticAngle: Angle     = Angle.fromDoubleDegrees(parallacticAngleRaw)
   val hourAngle: HourAngle        = HourAngle.fromDoubleHours(hourAngleRaw)
   val lunarPhaseAngle: Angle      = Angle.fromDoubleDegrees(lunarPhaseAngleRaw)
-  val sunAltitude: Declination    = Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(sunAltitudeRaw))._1
-  val lunarElevation: Declination = Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(lunarElevationRaw))._1
+  val sunAltitude: Declination    =
+    Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(sunAltitudeRaw))._1
+  val lunarElevation: Declination =
+    Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(lunarElevationRaw))._1
 }
 
 object SkyCalcResults {
+
   /** @group Typeclass Instances */
   implicit val SkyCalcResultsEqual: Eq[SkyCalcResults] = Eq.fromUniversalEquals
 

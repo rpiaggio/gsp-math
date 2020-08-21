@@ -10,10 +10,14 @@ import gsp.math.JulianDate
 import gsp.math.Place
 import java.time.Instant
 import java.time.LocalDate
+import gsp.math.skycalc.solver.Interval
+import gsp.math.skycalc.solver.Schedule
+import io.chrisdavenport.cats.time._
 
 trait TwilightCalc extends SunCalc {
 
-  /** Compute start and end of night for a particular date and place.
+  /**
+    * Compute start and end of night for a particular date and place.
     *
     * The night will be bounded by twilight as defined by
     * [[gsp.math.skycalc.TwilightBoundType]]. It will be the night that starts
@@ -27,11 +31,11 @@ trait TwilightCalc extends SunCalc {
     * respectively, or None if there's no sunset or sunrise for the
     * provided parameters.
     */
-  def calculate(
+  def calcForDate(
     boundType: TwilightBoundType,
     date:      LocalDate,
     place:     Place
-  ): Option[(Instant, Instant)] = {
+  ): Option[Interval] = {
     val nextMidnight = date.atStartOfDay(place.zone).plusDays(1)
     val jdmid        = JulianDate.ofInstant(nextMidnight.toInstant)
 
@@ -51,7 +55,20 @@ trait TwilightCalc extends SunCalc {
       case _                          => boundType.horizonAngle
     }
 
-    calcTimes(angle, jdmid, place)
+    calcTimes(angle, jdmid, place).flatMap(Interval.fromInstants.getOption)
+  }
+
+  def calcForInterval(
+    boundType: TwilightBoundType,
+    interval:  Interval,
+    place:     Place
+  ): Schedule = {
+    val startDate         = interval.start.atZone(place.zone).toLocalDate
+    val endDate           = interval.end.atZone(place.zone).toLocalDate
+    val dates             =
+      List.unfold(startDate)(date => if (date <= endDate) (date, date.plusDays(1)).some else none)
+    val twilightIntervals = dates.flatMap(d => calcForDate(boundType, d, place))
+    Schedule.fromIntervals.get(twilightIntervals).intersection(interval)
   }
 
   private def calcTimes(
