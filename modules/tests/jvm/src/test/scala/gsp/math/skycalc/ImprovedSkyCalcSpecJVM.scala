@@ -21,6 +21,11 @@ import io.chrisdavenport.cats.time._
 
 object ImprovedSkyCalcSpecJVM extends SimpleIOSuite with IOCheckers {
 
+  override val checkConfig: CheckConfig = {
+    val old = super.checkConfig
+    old.copy(minimumSuccessful = old.minimumSuccessful / 3) // this is a slow test
+  }
+
   private val zdtFrom  = ZonedDateTime.of(
     LocalDate.of(1901, 1, 1),
     LocalTime.MIDNIGHT,

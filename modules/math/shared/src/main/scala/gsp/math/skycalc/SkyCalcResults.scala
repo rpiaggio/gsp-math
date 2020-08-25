@@ -9,6 +9,8 @@ import gsp.math.Angle
 import gsp.math.Declination
 import gsp.math.HourAngle
 import monocle.Getter
+import gsp.math.Coordinates
+import gsp.math.Place
 
 /** Struct that holds results of SkyCalc. */
 final case class SkyCalcResults protected[skycalc](
@@ -23,7 +25,9 @@ final case class SkyCalcResults protected[skycalc](
   protected[skycalc] val lunarPhaseAngleRaw:  Double,
   protected[skycalc] val sunAltitudeRaw:      Double,
   lunarDistance:                              Double,
-  protected[skycalc] val lunarElevationRaw:   Double
+  protected[skycalc] val lunarElevationRaw:   Double,
+  coordinates:                                Coordinates,
+  place:                                      Place,
 ) {
   val altitude: Declination       = Declination.fromAngleWithCarry(Angle.fromDoubleDegrees(altitudeRaw))._1
   val azimuth: Angle              = Angle.fromDoubleDegrees(azimuthRaw)
