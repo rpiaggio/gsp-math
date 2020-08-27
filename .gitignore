@@ -45,6 +45,7 @@ out/
 # Bloop/Metals
 .bloop/
 .metals/
+*.worksheet.sc
 
 # Vim
 *.swp

@@ -13,10 +13,11 @@ import gsp.math.optics.SplitEpi
 import gsp.math.optics.SplitMono
 import spire.math.Number
 import spire.math.Rational
-import java.time.Duration
 import monocle.Iso
 import gsp.math.optics.Spire._
-import io.chrisdavenport.cats.time._
+import gsp.math.skycalc.solver.Samples.Bracket
+import cats.Eval
+import scala.collection.immutable.Nil
 
 object GetterStrategy {
   sealed trait Closest
@@ -39,12 +40,12 @@ trait CalcGetter[G, A] { self =>
     * @param field how to extract a partial result of type [[A]] from a [[T]]
     * @param instant the desired [[java.time.Instant]] at which to get the value of type [[A]]
     */
-  def get[T](calc: Calculator[T])(field: T => A)(instant: Instant): A
+  def get(calc: Samples[A])(instant: Instant): Option[A]
 
   def imap[B](f: A => B)(g: B => A): CalcGetter[G, B] =
     new CalcGetter[G, B] {
-      def get[T](calc: Calculator[T])(field: T => B)(instant: Instant): B =
-        f(self.get(calc)(field.andThen(g))(instant))
+      def get(calc: Samples[B])(instant: Instant): Option[B] =
+        self.get(calc.map(g))(instant).map(f)
     }
 
   def imap[B](optic: Wedge[A, B]): CalcGetter[G, B] =
@@ -64,44 +65,61 @@ trait CalcGetterInstances {
 
   implicit def closestGetter[A]: CalcGetter[GetterStrategy.Closest, A] =
     new CalcGetter[GetterStrategy.Closest, A] {
-      def get[T](calc: Calculator[T])(field: T => A)(instant: Instant): A = {
-        val idx         = calc.toIndex(instant)
-        val timedResult = calc.timedResults(idx)
-        if (idx >= calc.instants.length - 1)
-          field(timedResult._2)
-        else {
-          val nextTimedResult = calc.timedResults(idx + 1)
-          if (
-            Duration.between(timedResult._1, instant) <
-              Duration.between(instant, nextTimedResult._1)
-          )
-            field(timedResult._2)
-          else
-            field(nextTimedResult._2)
+      def get(calc: Samples[A])(instant: Instant): Option[A] =
+        calc.bracket(instant) match {
+
+          // Simple cases, no decisions to make.
+          case Bracket(_, Some((_, a)), _)       => a.value.some // Exact match
+          case Bracket(Some((_, a)), None, None) => a.value.some // All are smaller, last one wins
+          case Bracket(None, None, Some((_, a))) => a.value.some // All are larger, first one wins
+          case Bracket(None, None, None)         => none         // No samples at all, no match.
+
+          // In range but not an exact match. Pick the closer one.
+          case Bracket(Some((i0, a)), None, Some((i1, b))) => a.value.some
+            val d0 = instant.toEpochMilli - i0.toEpochMilli
+            val d1 = i1.toEpochMilli - instant.toEpochMilli
+            (if (d0 < d1) a else b).value.some
+
         }
       }
-    }
 
   implicit val interpolatedNumberGetter: CalcGetter[GetterStrategy.LinearInterpolating, Number] =
     new CalcGetter[GetterStrategy.LinearInterpolating, Number] {
-      def get[T](calc: Calculator[T])(field: T => Number)(instant: Instant): Number = {
-        val idx     = calc.toIndex(instant)
-        val result0 = calc.timedResults(idx)
-        val i0      = result0._1
-        val v0      = field(result0._2)
-        if (i0 === instant || idx === calc.timedResults.length - 1) v0
-        else {
-          val result1 = calc.timedResults(idx + 1)
-          val i1      = result1._1
-          // require(t0 <= t && t < t1)
-          val v1      = field(result1._2)
-          val v       =
-            v0 + Rational(instant.toEpochMilli - i0.toEpochMilli,
-                          i1.toEpochMilli - i0.toEpochMilli
-            ) * (v1 - v0)
-          // require((v0 >= v1 && v0 >= v && v >= v1) || (v0 < v1 && v0 <= v && v <= v1))
-          v
+      def get(calc: Samples[Number])(instant: Instant): Option[Number] = {
+
+        def interp(
+          e0: (Instant, Eval[Number]),
+          e1: (Instant, Eval[Number])
+        ): Eval[Number] =
+          for {
+            v0 <- e0._2
+            i0  = e0._1
+            v1 <- e1._2
+            i1  = e1._1
+          } yield {
+              v0 + Rational(
+                instant.toEpochMilli - i0.toEpochMilli,
+                i1.toEpochMilli      - i0.toEpochMilli
+              ) * (v1 - v0)
+          }
+
+        calc.bracket(instant) match {
+          case Bracket(_, Some((_, n)), _) => n.value.some // exact match
+          case Bracket(left, None, right)  =>
+            if (left.nonEmpty && right.nonEmpty) {
+              // There's at least one point on the left and one on the right
+              interp(left.last, right.head).value.some
+            } else {
+              // One side is empty, so take two from the end of the left and front of the right, and
+              // we'll have at most two points.
+              (left.takeRight(2).toList ++ right.take(2).toList) match {
+                case e0 :: e1 :: Nil => interp(e0, e1).value.some // interpolate
+                case (_, n0)  :: Nil => n0.value.some             // assume constant if there's only one entry
+                case _               => none                      // no points, can't even guess!
+              }
+            }
         }
+
       }
     }
 
@@ -139,12 +157,10 @@ trait CalcGetterInstances {
     getterB: CalcGetter[G, B]
   ): CalcGetter[G, (A, B)] =
     new CalcGetter[G, (A, B)] {
-      def get[T](calc: Calculator[T])(field: T => (A, B))(instant: Instant): (A, B) =
-        (
-          getterA.get(calc)(field.andThen(_._1))(instant),
-          getterB.get(calc)(field.andThen(_._2))(instant)
-        )
-    }
+      def get(calc: Samples[(A, B)])(instant: Instant): Option[(A, B)] =
+        getterA.get(calc.map(_._1))(instant) product
+        getterB.get(calc.map(_._2))(instant)
+      }
 
 }
 

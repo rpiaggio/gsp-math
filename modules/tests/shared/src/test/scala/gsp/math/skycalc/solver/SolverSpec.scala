@@ -10,24 +10,19 @@ import gsp.math.skycalc.solver.SolverStrategy._
 import gsp.math.skycalc.solver.GetterStrategy._
 
 final class SolverSpec extends CatsSuite {
-  object TestCalculator extends Calculator[Unit] {
-    override val instants: List[Instant] = List.empty
 
-    override def toIndex(i: Instant): Int = 0
-
-    override val result: Instant => Unit = _ => ()
-  }
+  val TestCalculator = Samples.single(Instant.MIN, ())
 
   case class TestConstraint(f: Instant => Boolean) extends Constraint[Unit, Unit] {
-    override def metAt[G](calc: Calculator[Unit])(i: Instant)(implicit
+    override def metAt[G](calc: Samples[Unit])(i: Instant)(implicit
       getter:                   CalcGetter[G, Unit]
     ): Boolean = f(i)
   }
 
   implicit val testValueGetter = new CalcGetter[Closest, Unit] {
-    def get[T](calc: Calculator[T])(field: T => Unit)(
+    def get(calc: Samples[Unit])(
       instant:       Instant
-    ): Unit = ()
+    ): Option[Unit] = Some(())
   }
 
   def constraintSolver[S](f: Instant => Boolean)(implicit solver: Solver[S]) =
